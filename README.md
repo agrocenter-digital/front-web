@@ -1,4 +1,4 @@
-# AgroCenter Digital — Frontend MVP
+# AgroCenter Digital — Frontend MVP, actualizacion
 
 Frontend React para centralizar compras, ventas, inventario y movimientos de stock de AgroCenter.
 
