@@ -34,6 +34,47 @@ La aplicación queda disponible en `http://localhost:3000`.
 
 Si Cognito no está configurado, la pantalla de acceso ofrece automáticamente el modo demostración.
 
+## Docker
+
+El proyecto incluye un `Dockerfile` optimizado con compilación multi-etapa (*multi-stage build*) basado en `node:22-alpine` y ejecución bajo un usuario sin privilegios (`agrocenter`).
+
+### Construir la imagen
+
+Construcción base (modo demostración en memoria):
+
+```bash
+docker build -t agrocenter-front-web:latest .
+```
+
+Construcción con integración a AWS Cognito y el BFF (las variables `NEXT_PUBLIC_*` se inyectan en el empaquetado del cliente):
+
+```bash
+docker build \
+  --build-arg NEXT_PUBLIC_COGNITO_DOMAIN="https://tu-dominio.auth.us-east-1.amazoncognito.com" \
+  --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID="tu_app_client_id" \
+  --build-arg NEXT_PUBLIC_COGNITO_REDIRECT_URI="http://localhost:3000" \
+  --build-arg NEXT_PUBLIC_API_BASE_URL="http://localhost:8080" \
+  -t agrocenter-front-web:latest .
+```
+
+### Ejecutar el contenedor
+
+```bash
+docker run -d --name agrocenter-front -p 3000:3000 agrocenter-front-web:latest
+```
+
+La aplicación queda expuesta en `http://localhost:3000`.
+
+### Comprobar estado y salud
+
+```bash
+# Comprobar respuesta HTTP
+curl -I http://localhost:3000
+
+# Ver estado del healthcheck de Docker
+docker inspect --format='{{json .State.Health.Status}}' agrocenter-front
+```
+
 ## Verificación
 
 ```bash
@@ -48,3 +89,5 @@ npm test
 - `lib/cognito.ts`: PKCE, intercambio de código, sesión y cierre local.
 - `lib/api.ts`: cliente HTTP preparado para JWT Bearer.
 - `.env.example`: variables de integración.
+- `Dockerfile`: construcción multi-stage optimizada en Alpine Linux con Node.js 22 y usuario de seguridad `agrocenter`.
+- `.dockerignore`: exclusión de dependencias locales, binarios de compilación (`dist`, `.next`), cachés y archivos de entorno.
