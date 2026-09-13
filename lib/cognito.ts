@@ -18,6 +18,8 @@ const config = {
     (typeof window === "undefined" ? "" : window.location.origin),
 };
 
+let isProcessingSignIn = false;
+
 function base64Url(bytes: Uint8Array) {
   let binary = "";
   bytes.forEach((byte) => (binary += String.fromCharCode(byte)));
@@ -89,45 +91,69 @@ export async function beginCognitoSignIn() {
 }
 
 export async function completeCognitoSignIn(): Promise<AuthSession | null> {
+  if (typeof window === "undefined") return null;
+
   const query = new URLSearchParams(window.location.search);
   const code = query.get("code");
   if (!code) return null;
 
+  // Si ya existe sesión previa en almacenamiento, se reutiliza
+  const existingSession = readAuthSession();
+  if (existingSession) {
+    window.history.replaceState({}, "", window.location.pathname);
+    return existingSession;
+  }
+
+  // Previene ejecución concurrente por doble render de React (StrictMode)
+  if (isProcessingSignIn) return null;
+  isProcessingSignIn = true;
+
   const returnedState = query.get("state");
   const expectedState = sessionStorage.getItem(STATE_KEY);
   const verifier = sessionStorage.getItem(VERIFIER_KEY);
+
   if (!expectedState || returnedState !== expectedState || !verifier) {
+    isProcessingSignIn = false;
     throw new Error("La respuesta de autenticación no superó la validación de seguridad.");
   }
 
-  const body = new URLSearchParams({
-    grant_type: "authorization_code",
-    client_id: config.clientId,
-    code,
-    redirect_uri: config.redirectUri,
-    code_verifier: verifier,
-  });
-  const response = await fetch(`${config.domain}/oauth2/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
-  if (!response.ok) throw new Error("Cognito no pudo completar el intercambio del código.");
+  try {
+    const body = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: config.clientId,
+      code,
+      redirect_uri: config.redirectUri,
+      code_verifier: verifier,
+    });
 
-  const tokens = (await response.json()) as { access_token: string; id_token?: string };
-  const claims = decodeClaims(tokens.id_token ?? tokens.access_token);
-  const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"] : [];
-  const session: AuthSession = {
-    accessToken: tokens.access_token,
-    idToken: tokens.id_token,
-    name: String(claims.name ?? claims.email ?? "Usuario AgroCenter"),
-    role: String(groups[0] ?? "Usuario operativo"),
-  };
-  sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  sessionStorage.removeItem(VERIFIER_KEY);
-  sessionStorage.removeItem(STATE_KEY);
-  window.history.replaceState({}, "", window.location.pathname);
-  return session;
+    const response = await fetch(`${config.domain}/oauth2/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body,
+    });
+
+    if (!response.ok) throw new Error("Cognito no pudo completar el intercambio del código.");
+
+    const tokens = (await response.json()) as { access_token: string; id_token?: string };
+    const claims = decodeClaims(tokens.id_token ?? tokens.access_token);
+    const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"] : [];
+    
+    const session: AuthSession = {
+      accessToken: tokens.access_token,
+      idToken: tokens.id_token,
+      name: String(claims.name ?? claims.email ?? "Usuario AgroCenter"),
+      role: String(groups[0] ?? "Usuario operativo"),
+    };
+
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
+    sessionStorage.removeItem(VERIFIER_KEY);
+    sessionStorage.removeItem(STATE_KEY);
+    window.history.replaceState({}, "", window.location.pathname);
+
+    return session;
+  } finally {
+    isProcessingSignIn = false;
+  }
 }
 
 export function signOut() {
