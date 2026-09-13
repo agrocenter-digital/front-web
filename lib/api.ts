@@ -16,9 +16,19 @@ export async function apiRequest<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  // El BFF exige token_use=access (Access Token obligatorio)
-  if (session?.accessToken) {
-    headers["Authorization"] = `Bearer ${session.accessToken}`;
+  // Se prioriza el idToken porque contiene los claims de grupos (cognito:groups: ["CLIENTE"])
+  const token = session?.idToken || session?.accessToken;
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Garantizar idempotency-key para solicitudes POST hacia el BFF si no viene provista
+  const method = (options.method || "GET").toUpperCase();
+  if (method === "POST" && !headers["Idempotency-Key"] && !headers["idempotency-key"]) {
+    headers["Idempotency-Key"] =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
@@ -30,7 +40,9 @@ export async function apiRequest<T>(
   if (!response.ok) {
     const errorData = await response.json().catch(() => null);
     const errorMessage =
-      errorData?.message || `Error ${response.status}: ${response.statusText}`;
+      errorData?.message ||
+      errorData?.error ||
+      `Error ${response.status}: ${response.statusText || "Forbidden"}`;
     throw new Error(errorMessage);
   }
 
