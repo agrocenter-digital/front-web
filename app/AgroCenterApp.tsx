@@ -36,6 +36,7 @@ import {
   readAuthSession,
   signOut,
 } from "@/lib/cognito";
+import { apiRequest } from "@/lib/api";
 
 type Product = {
   id: number;
@@ -60,7 +61,7 @@ const categoryOptions = [
   { name: "Maquinaria", icon: Tractor, copy: "Equipos y repuestos" },
 ];
 
-const products: Product[] = [
+const initialProducts: Product[] = [
   {
     id: 1,
     name: "Fertilizante NPK granulado 25 kg",
@@ -161,9 +162,23 @@ const products: Product[] = [
   },
 ];
 
-const regions = ["Región de Coquimbo", "Región de Valparaíso", "Región Metropolitana", "Región de O’Higgins", "Región del Maule", "Región de Ñuble", "Región del Biobío", "Región de La Araucanía", "Región de Los Lagos"];
+const regions = [
+  "Región de Coquimbo",
+  "Región de Valparaíso",
+  "Región Metropolitana",
+  "Región de O’Higgins",
+  "Región del Maule",
+  "Región de Ñuble",
+  "Región del Biobío",
+  "Región de La Araucanía",
+  "Región de Los Lagos",
+];
 
-const money = new Intl.NumberFormat("es-CL", { style: "currency", currency: "CLP", maximumFractionDigits: 0 });
+const money = new Intl.NumberFormat("es-CL", {
+  style: "currency",
+  currency: "CLP",
+  maximumFractionDigits: 0,
+});
 
 export default function AgroCenterApp() {
   const [query, setQuery] = useState("");
@@ -176,6 +191,7 @@ export default function AgroCenterApp() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
   const [region, setRegion] = useState("Región Metropolitana");
@@ -183,9 +199,50 @@ export default function AgroCenterApp() {
   const [authError, setAuthError] = useState("");
   const [toast, setToast] = useState("");
 
+  // Estado del catálogo dinámico proveniente del BFF
+  const [catalog, setCatalog] = useState<Product[]>(initialProducts);
+
   useEffect(() => {
-    completeCognitoSignIn().then((completed) => setSession(completed ?? readAuthSession())).catch((error: unknown) => setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión."));
+    completeCognitoSignIn()
+      .then((completed) => setSession(completed ?? readAuthSession()))
+      .catch((error: unknown) => {
+        if (!readAuthSession()) {
+          setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión.");
+        }
+      });
   }, []);
+
+  // Cargar catálogo desde GET /api/bff/catalogo cuando hay sesión autenticada
+  useEffect(() => {
+    if (session?.accessToken) {
+      apiRequest<any>("/api/bff/catalogo")
+        .then((data) => {
+          const items = Array.isArray(data) ? data : data?.content || [];
+          if (items.length > 0) {
+            const mapped: Product[] = items.map((p: any) => ({
+              id: p.id,
+              name: p.nombre || p.name,
+              category: p.categoria || p.category || "General",
+              price: p.precio || p.price || 0,
+              oldPrice: p.precioAnterior || p.oldPrice,
+              badge: p.badge || (p.enOferta ? "Oferta" : undefined),
+              unit: p.unidad || p.unit || "Unidad",
+              stock: p.stock ?? 10,
+              rating: p.calificacion || p.rating || 4.8,
+              description: p.descripcion || p.description || "",
+              image:
+                p.imagenUrl ||
+                p.image ||
+                "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=82",
+            }));
+            setCatalog(mapped);
+          }
+        })
+        .catch((err) => {
+          console.warn("BFF catálogo no disponible o error de red; usando catálogo local:", err.message);
+        });
+    }
+  }, [session]);
 
   useEffect(() => {
     if (!toast) return;
@@ -195,8 +252,12 @@ export default function AgroCenterApp() {
 
   const visibleProducts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    const filtered = products.filter((product) => {
-      const matchesSearch = !normalized || `${product.name} ${product.category} ${product.description}`.toLowerCase().includes(normalized);
+    const filtered = catalog.filter((product) => {
+      const matchesSearch =
+        !normalized ||
+        `${product.name} ${product.category} ${product.description}`
+          .toLowerCase()
+          .includes(normalized);
       return matchesSearch && (category === "Todas" || product.category === category);
     });
     return [...filtered].sort((a, b) => {
@@ -205,9 +266,15 @@ export default function AgroCenterApp() {
       if (sort === "rating") return b.rating - a.rating;
       return Number(Boolean(b.badge)) - Number(Boolean(a.badge));
     });
-  }, [category, query, sort]);
+  }, [catalog, category, query, sort]);
 
-  const cartItems = useMemo(() => products.filter((product) => cart[product.id]).map((product) => ({ ...product, quantity: cart[product.id] })), [cart]);
+  const cartItems = useMemo(
+    () =>
+      catalog
+        .filter((product) => cart[product.id])
+        .map((product) => ({ ...product, quantity: cart[product.id] })),
+    [catalog, cart]
+  );
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
@@ -232,13 +299,47 @@ export default function AgroCenterApp() {
   function chooseCategory(nextCategory: string) {
     setCategory(nextCategory);
     setMobileOpen(false);
-    window.setTimeout(() => document.querySelector("#productos")?.scrollIntoView({ behavior: "smooth" }), 0);
+    window.setTimeout(
+      () => document.querySelector("#productos")?.scrollIntoView({ behavior: "smooth" }),
+      0
+    );
   }
 
-  function submitCheckout(event: FormEvent<HTMLFormElement>) {
+  async function submitCheckout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setOrderPlaced(true);
-    setCart({});
+
+    if (!session) {
+      setCheckoutOpen(false);
+      setAuthError("Debes iniciar sesión con AgroCenter para completar la compra.");
+      setAccountOpen(true);
+      return;
+    }
+
+    // Contrato exigido por el BFF: POST /api/bff/ventas
+    const payload = {
+      items: cartItems.map((item) => ({
+        productoId: item.id,
+        cantidad: item.quantity,
+      })),
+    };
+
+    setIsSubmittingOrder(true);
+    try {
+      await apiRequest("/api/bff/ventas", {
+        method: "POST",
+        headers: {
+          "Idempotency-Key": crypto.randomUUID(),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      setOrderPlaced(true);
+      setCart({});
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : "No fue posible procesar la orden en el servidor.");
+    } finally {
+      setIsSubmittingOrder(false);
+    }
   }
 
   return (
@@ -352,7 +453,7 @@ export default function AgroCenterApp() {
 
       {selectedProduct && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setSelectedProduct(null)}><section className="product-modal"><button className="modal-close" type="button" onClick={() => setSelectedProduct(null)} aria-label="Cerrar detalle"><X /></button><div className="modal-product-image"><img src={selectedProduct.image} alt={selectedProduct.name} />{selectedProduct.badge && <span>{selectedProduct.badge}</span>}</div><div className="modal-product-copy"><span className="eyebrow">{selectedProduct.category}</span><h2>{selectedProduct.name}</h2><div className="rating"><span>★</span> {selectedProduct.rating} · {selectedProduct.stock} disponibles</div><p>{selectedProduct.description}</p><ul><li><Check size={15} /> Despacho disponible a regiones</li><li><Check size={15} /> Soporte técnico para tu compra</li><li><Check size={15} /> Garantía de satisfacción</li></ul><div className="modal-price">{selectedProduct.oldPrice && <del>{money.format(selectedProduct.oldPrice)}</del>}<strong>{money.format(selectedProduct.price)}</strong><small>{selectedProduct.unit} · IVA incluido</small></div><button className="primary-modal-action" type="button" onClick={() => { addToCart(selectedProduct, true); setSelectedProduct(null); }}><ShoppingCart size={18} /> Agregar y ver carrito</button></div></section></div>}
 
-      {checkoutOpen && <div className="modal-backdrop"><section className="checkout-modal"><button className="modal-close" type="button" onClick={() => { setCheckoutOpen(false); setOrderPlaced(false); }} aria-label="Cerrar checkout"><X /></button>{orderPlaced ? <div className="success-state"><span><Check /></span><p>Solicitud recibida</p><h2>¡Gracias por comprar en AgroCenter!</h2><p>En un flujo conectado, aquí recibirías la confirmación y los datos de despacho. Para este MVP, la experiencia termina correctamente en este punto.</p><button type="button" onClick={() => { setCheckoutOpen(false); setOrderPlaced(false); }}>Volver a la tienda</button></div> : <><div className="checkout-head"><span>Último paso</span><h2>Datos de entrega</h2><p>Completa tus datos para simular la solicitud de compra.</p></div><form onSubmit={submitCheckout}><div className="form-grid"><label>Nombre y apellido<input required placeholder="Ej. Daniela Soto" /></label><label>Correo<input required type="email" placeholder="nombre@empresa.cl" /></label><label>Teléfono<input required type="tel" placeholder="+56 9 1234 5678" /></label><label>Región<select value={region} onChange={(event) => setRegion(event.target.value)}>{regions.map((item) => <option key={item}>{item}</option>)}</select></label><label className="full-field">Dirección o referencia de entrega<input required placeholder="Camino, parcela, comuna" /></label></div><div className="payment-demo"><CreditCard /><div><b>Pago en la siguiente etapa</b><p>El MVP no procesa pagos reales. La integración se conectará al proveedor definido por el negocio.</p></div></div><div className="checkout-total"><span>Total productos</span><strong>{money.format(subtotal)}</strong></div><button className="primary-modal-action" type="submit"><BadgeCheck size={18} /> Confirmar solicitud</button></form></>}</section></div>}
+      {checkoutOpen && <div className="modal-backdrop"><section className="checkout-modal"><button className="modal-close" type="button" onClick={() => { setCheckoutOpen(false); setOrderPlaced(false); }} aria-label="Cerrar checkout"><X /></button>{orderPlaced ? <div className="success-state"><span><Check /></span><p>Solicitud recibida</p><h2>¡Gracias por comprar en AgroCenter!</h2><p>Tu orden ha sido registrada en el sistema de ventas con éxito.</p><button type="button" onClick={() => { setCheckoutOpen(false); setOrderPlaced(false); }}>Volver a la tienda</button></div> : <><div className="checkout-head"><span>Último paso</span><h2>Datos de entrega</h2><p>Completa tus datos para confirmar el pedido a través de nuestros servicios.</p></div><form onSubmit={submitCheckout}><div className="form-grid"><label>Nombre y apellido<input required placeholder="Ej. Daniela Soto" /></label><label>Correo<input required type="email" placeholder="nombre@empresa.cl" /></label><label>Teléfono<input required type="tel" placeholder="+56 9 1234 5678" /></label><label>Región<select value={region} onChange={(event) => setRegion(event.target.value)}>{regions.map((item) => <option key={item}>{item}</option>)}</select></label><label className="full-field">Dirección o referencia de entrega<input required placeholder="Camino, parcela, comuna" /></label></div><div className="payment-demo"><CreditCard /><div><b>Pago en la siguiente etapa</b><p>La orden se registrará directamente en ms-ventas.</p></div></div><div className="checkout-total"><span>Total productos</span><strong>{money.format(subtotal)}</strong></div><button className="primary-modal-action" type="submit" disabled={isSubmittingOrder}><BadgeCheck size={18} /> {isSubmittingOrder ? "Procesando orden..." : "Confirmar solicitud"}</button></form></>}</section></div>}
 
       {accountOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAccountOpen(false)}><section className="small-modal"><button className="modal-close" type="button" onClick={() => setAccountOpen(false)} aria-label="Cerrar cuenta"><X /></button><span className="modal-symbol"><CircleUserRound /></span>{session ? <><p>Mi cuenta</p><h2>Hola, {session.name}</h2><small>{session.demo ? "Sesión de demostración" : session.role}</small><button className="primary-modal-action" type="button" onClick={() => { signOut(); setSession(null); setAccountOpen(false); }}>Cerrar sesión</button></> : <><p>Clientes AgroCenter</p><h2>Ingresa a tu cuenta</h2><small>Revisa compras, guarda productos y agiliza tus próximos pedidos.</small>{authError && <div className="form-error">{authError}</div>}<button className="primary-modal-action" type="button" onClick={() => { setAuthError(""); if (cognitoIsConfigured()) beginCognitoSignIn().catch((error: unknown) => setAuthError(error instanceof Error ? error.message : "No fue posible conectar.")); else setSession(createDemoSession()); }}>{cognitoIsConfigured() ? "Ingresar con AgroCenter" : "Entrar en modo demo"}</button></>}</section></div>}
 

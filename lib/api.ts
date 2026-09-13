@@ -1,21 +1,38 @@
 import { readAuthSession } from "./cognito";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") ?? "";
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  ""
+).replace(/\/$/, "");
 
-export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (!API_BASE_URL) throw new Error("La URL del BFF aún no está configurada.");
+export async function apiRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
   const session = readAuthSession();
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {}),
-      ...init.headers,
-    },
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  // El BFF exige token_use=access (Access Token obligatorio)
+  if (session?.accessToken) {
+    headers["Authorization"] = `Bearer ${session.accessToken}`;
+  }
+
+  const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const response = await fetch(`${API_BASE_URL}${cleanEndpoint}`, {
+    ...options,
+    headers,
   });
 
-  if (response.status === 401) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
-  if (response.status === 403) throw new Error("No tienes permisos para realizar esta acción.");
-  if (!response.ok) throw new Error(`El servicio respondió con código ${response.status}.`);
-  return (await response.json()) as T;
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    const errorMessage =
+      errorData?.message || `Error ${response.status}: ${response.statusText}`;
+    throw new Error(errorMessage);
+  }
+
+  return response.json() as Promise<T>;
 }
