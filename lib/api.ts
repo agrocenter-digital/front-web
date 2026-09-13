@@ -16,8 +16,8 @@ export async function apiRequest<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  // Se prioriza el idToken porque contiene los claims de grupos (cognito:groups: ["CLIENTE"])
-  const token = session?.idToken || session?.accessToken;
+  // Se prioriza el accessToken requerido por los Resource Servers (CognitoTokenUseValidator exige token_use: "access")
+  const token = session?.accessToken || session?.idToken;
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
