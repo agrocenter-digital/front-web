@@ -131,7 +131,16 @@ export async function completeCognitoSignIn(): Promise<AuthSession | null> {
 }
 
 export function signOut() {
+  if (typeof window === "undefined") return;
+
   sessionStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(VERIFIER_KEY);
   sessionStorage.removeItem(STATE_KEY);
+
+  if (config.domain && config.clientId) {
+    const logoutUri = encodeURIComponent(config.redirectUri);
+    window.location.assign(
+      `${config.domain}/logout?client_id=${config.clientId}&logout_uri=${logoutUri}`
+    );
+  }
 }
