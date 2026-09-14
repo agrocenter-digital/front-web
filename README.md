@@ -1,93 +1,82 @@
-# AgroCenter Digital — Frontend MVP, actualizacion
+# AgroCenter Digital — Frontend Web (`front-web`)
 
-Frontend React para centralizar compras, ventas, inventario y movimientos de stock de AgroCenter.
+Aplicación web React / Next.js para la plataforma **AgroCenter Digital**, optimizada para la experiencia de clientes y administradores en la gestión de compras, ventas, inventario y catálogo.
 
-## Alcance del MVP
+---
 
-- Inicio y cierre de sesión con modo demostración funcional.
-- Flujo OAuth 2.0 / OpenID Connect Authorization Code con PKCE preparado para AWS Cognito.
-- Panel operativo con indicadores, alertas y actividad reciente.
-- Consulta y filtrado de inventario por nombre, SKU o categoría.
-- Registro de compras con incremento automático de existencias.
-- Registro de ventas con validación previa de stock y descuento automático.
-- Historial auditable de entradas y salidas.
-- Diseño adaptable a escritorio, tablet y móvil.
+## 1. Entorno de Producción y Alojamiento
 
-Los datos del modo demostración viven en memoria y se reinician al recargar. Cuando exista el BFF, `lib/api.ts` permite consumirlo adjuntando el Access Token como Bearer Token.
+* **URL de Producción (Vercel)**: [`https://front-web-seven.vercel.app`](https://front-web-seven.vercel.app/)
+* **Integración CI/CD**:
+  - **Vercel Git Integration**: Cada `git push` a la rama `main` dispara automáticamente la optimización y el despliegue a la red global de Vercel.
+  - **GitHub Actions (`.github/workflows/deploy.yml`)**: Construye en paralelo la imagen Docker multi-etapa y la sube al repositorio Docker Hub como `agrocenter-frontend:latest`.
 
-## Ejecutar localmente
+---
 
-Requiere Node.js `>=22.13.0`.
+## 2. Autenticación y Flujo de Sesión
 
+La aplicación utiliza **AWS Cognito** con autenticación segura:
+* **Protocolo**: OAuth 2.0 Authorization Code con **PKCE** (Proof Key for Code Exchange).
+* **Proveedores de Identidad**: Soporta autenticación nativa de Cognito y federación con **Google**.
+* **Manejo de Tokens en Cliente (`lib/api.ts`)**:
+  - El cliente HTTP prioriza estrictamente el **`accessToken`** sobre el `idToken` para comunicarse con las APIs del backend.
+  - Los endpoints protegidos viajan con la cabecera estándar:
+    ```http
+    Authorization: Bearer <accessToken>
+    ```
+  - Los roles y permisos (`ROLE_CLIENTE`, `ROLE_ADMIN`) son interpretados automáticamente por el backend a partir de los claims (`cognito:groups`).
+* **Modo Demostración**: Si no se configuran variables de Cognito, la interfaz ofrece un modo de prueba local en memoria para evaluar componentes visuales sin dependencias de red.
+
+---
+
+## 3. Variables de Entorno
+
+Crear un archivo `.env.local` basado en `.env.example`:
+
+| Variable | Descripción | Ejemplo / Producción |
+| :--- | :--- | :--- |
+| `NEXT_PUBLIC_API_BASE_URL` | URL del BFF o API Gateway | `https://...amazonaws.com` o `http://localhost:8080` |
+| `NEXT_PUBLIC_COGNITO_DOMAIN` | Dominio Hosted UI de AWS Cognito | `https://tu-dominio.auth.us-east-1.amazoncognito.com` |
+| `NEXT_PUBLIC_COGNITO_CLIENT_ID` | App Client ID de Cognito (público) | `tu_app_client_id` |
+| `NEXT_PUBLIC_COGNITO_REDIRECT_URI`| Callback de redirección tras login | `https://front-web-seven.vercel.app` o `http://localhost:3000` |
+
+---
+
+## 4. Ejecución Local
+
+### Requisitos
+* Node.js `>=20.x` o `>=22.x`
+* npm `>=10.x`
+
+### Comandos de Desarrollo
 ```bash
+# Instalar dependencias
 npm install
+
+# Iniciar servidor de desarrollo
 npm run dev
 ```
+La aplicación iniciará en `http://localhost:3000`.
 
-La aplicación queda disponible en `http://localhost:3000`.
-
-## Configurar AWS Cognito y el BFF
-
-1. Copia `.env.example` como `.env.local`.
-2. Completa el dominio del Hosted UI, App Client ID, URI de redirección y URL del API Gateway/BFF.
-3. Configura en Cognito el flujo Authorization Code, PKCE, scopes `openid email profile` y la misma URI de redirección.
-
-Si Cognito no está configurado, la pantalla de acceso ofrece automáticamente el modo demostración.
-
-## Docker
-
-El proyecto incluye un `Dockerfile` optimizado con compilación multi-etapa (*multi-stage build*) basado en `node:22-alpine` y ejecución bajo un usuario sin privilegios (`agrocenter`).
-
-### Construir la imagen
-
-Construcción base (modo demostración en memoria):
-
+### Verificación y Calidad
 ```bash
-docker build -t agrocenter-front-web:latest .
-```
-
-Construcción con integración a AWS Cognito y el BFF (las variables `NEXT_PUBLIC_*` se inyectan en el empaquetado del cliente):
-
-```bash
-docker build \
-  --build-arg NEXT_PUBLIC_COGNITO_DOMAIN="https://tu-dominio.auth.us-east-1.amazoncognito.com" \
-  --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID="tu_app_client_id" \
-  --build-arg NEXT_PUBLIC_COGNITO_REDIRECT_URI="http://localhost:3000" \
-  --build-arg NEXT_PUBLIC_API_BASE_URL="http://localhost:8080" \
-  -t agrocenter-front-web:latest .
-```
-
-### Ejecutar el contenedor
-
-```bash
-docker run -d --name agrocenter-front -p 3000:3000 agrocenter-front-web:latest
-```
-
-La aplicación queda expuesta en `http://localhost:3000`.
-
-### Comprobar estado y salud
-
-```bash
-# Comprobar respuesta HTTP
-curl -I http://localhost:3000
-
-# Ver estado del healthcheck de Docker
-docker inspect --format='{{json .State.Health.Status}}' agrocenter-front
-```
-
-## Verificación
-
-```bash
+# Validar compilación de producción
 npm run build
+
+# Ejecutar suite de pruebas
 npm test
 ```
 
-## Estructura principal
+---
 
-- `app/AgroCenterApp.tsx`: experiencia y estados del MVP.
-- `app/globals.css`: sistema visual y comportamiento responsive.
-- `lib/cognito.ts`: PKCE, intercambio de código, sesión y cierre local.
-- `lib/api.ts`: cliente HTTP preparado para JWT Bearer.
-- `.env.example`: variables de integración.
-- `Dockerfile`: construcción multi-stage optimizada en Alpine Linux con Node.js 22 y usuario de seguridad `agrocenter`.
-- `.dockerignore`: exclusión de dependencias locales, binarios de compilación (`dist`, `.next`), cachés y archivos de entorno.
+## 5. Docker
+
+El proyecto cuenta con un `Dockerfile` multi-stage optimizado sobre Alpine Linux con usuario no-root (`agrocenter`):
+
+```bash
+# Construir imagen local
+docker build -t agrocenter-front-web:latest .
+
+# Ejecutar contenedor
+docker run -d --name agrocenter-front -p 3000:3000 agrocenter-front-web:latest
+```
