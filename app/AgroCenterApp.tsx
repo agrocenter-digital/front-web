@@ -206,9 +206,19 @@ export default function AgroCenterApp() {
 
   useEffect(() => {
     completeCognitoSignIn()
-      .then((completed) => setSession(completed ?? readAuthSession()))
+      .then((completed) => {
+        const active = completed ?? readAuthSession();
+        if (active) {
+          setSession(active);
+          setAuthError("");
+        }
+      })
       .catch((error: unknown) => {
-        if (!readAuthSession()) {
+        const active = readAuthSession();
+        if (active) {
+          setSession(active);
+          setAuthError("");
+        } else {
           setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión.");
         }
       });
