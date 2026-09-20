@@ -236,7 +236,8 @@ export default function AdminPage() {
         : `/${endpointConfig.endpoint}`;
       const url = `${API_BASE_URL}${cleanEndpoint}`;
 
-      const token = session?.accessToken || session?.idToken;
+      const activeSession = session || readAuthSession();
+      const token = activeSession?.accessToken || activeSession?.idToken;
       const headers: Record<string, string> = {
         Accept: "application/json",
       };
@@ -430,7 +431,8 @@ export default function AdminPage() {
         : `/${selectedConsoleEndpoint}`;
       const url = `${API_BASE_URL}${cleanEndpoint}`;
 
-      const token = session?.accessToken || session?.idToken;
+      const activeSession = session || readAuthSession();
+      const token = activeSession?.accessToken || activeSession?.idToken;
       const headers: Record<string, string> = {
         Accept: "application/json",
       };
