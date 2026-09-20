@@ -4,6 +4,7 @@ export type AuthSession = {
   name: string;
   role: string;
   demo?: boolean;
+  groups?: string[];
 };
 
 const SESSION_KEY = "agrocenter.auth";
@@ -59,11 +60,33 @@ export function createDemoSession(): AuthSession {
   const session: AuthSession = {
     accessToken: "demo-access-token",
     name: "Camila Muñoz",
-    role: "Administradora de bodega",
+    role: "ADMIN",
     demo: true,
+    groups: ["ADMIN"],
   };
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
   return session;
+}
+
+export function isUserAdmin(session: AuthSession | null): boolean {
+  if (!session) return false;
+  if (session.demo) return true;
+  if (session.role?.toUpperCase() === "ADMIN" || session.role?.toUpperCase() === "ROLE_ADMIN") {
+    return true;
+  }
+  if (session.groups?.some((g) => g.toUpperCase() === "ADMIN" || g.toUpperCase() === "ROLE_ADMIN")) {
+    return true;
+  }
+  const checkToken = (token?: string) => {
+    if (!token) return false;
+    const claims = decodeClaims(token);
+    const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"] : [];
+    return groups.some((g: unknown) => {
+      const val = String(g).toUpperCase();
+      return val === "ADMIN" || val === "ROLE_ADMIN";
+    });
+  };
+  return checkToken(session.idToken) || checkToken(session.accessToken);
 }
 
 export async function beginCognitoSignIn() {
@@ -136,13 +159,15 @@ export async function completeCognitoSignIn(): Promise<AuthSession | null> {
 
     const tokens = (await response.json()) as { access_token: string; id_token?: string };
     const claims = decodeClaims(tokens.id_token ?? tokens.access_token);
-    const groups = Array.isArray(claims["cognito:groups"]) ? claims["cognito:groups"] : [];
+    const groups = Array.isArray(claims["cognito:groups"]) ? (claims["cognito:groups"] as string[]) : [];
+    const hasAdminGroup = groups.some((g) => g.toUpperCase() === "ADMIN" || g.toUpperCase() === "ROLE_ADMIN");
     
     const session: AuthSession = {
       accessToken: tokens.access_token,
       idToken: tokens.id_token,
       name: String(claims.name ?? claims.email ?? "Usuario AgroCenter"),
-      role: String(groups[0] ?? "Usuario operativo"),
+      role: hasAdminGroup ? "ADMIN" : String(groups[0] ?? "Usuario operativo"),
+      groups,
     };
 
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));

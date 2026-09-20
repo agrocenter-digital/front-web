@@ -27,12 +27,14 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import Link from "next/link";
 import {
   AuthSession,
   beginCognitoSignIn,
   cognitoIsConfigured,
   completeCognitoSignIn,
   createDemoSession,
+  isUserAdmin,
   readAuthSession,
   signOut,
 } from "@/lib/cognito";
@@ -346,7 +348,30 @@ export default function AgroCenterApp() {
     <main className="storefront">
       <div className="promo-bar">
         <p><Truck size={14} /> Despacho a todo Chile</p>
-        <p>Compra segura · Atención experta</p>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+          {isUserAdmin(session) && (
+            <Link
+              href="/admin"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "rgba(220, 236, 183, 0.22)",
+                border: "1px solid rgba(220, 236, 183, 0.4)",
+                color: "#dcecb7",
+                padding: "2px 8px",
+                borderRadius: "5px",
+                fontSize: "11px",
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
+              <ShieldCheck size={12} />
+              <span>Modo Admin</span>
+            </Link>
+          )}
+          <p>Compra segura · Atención experta</p>
+        </div>
       </div>
 
       <header className="store-header">
@@ -363,6 +388,28 @@ export default function AgroCenterApp() {
           </label>
           <button className="header-action location-action" type="button" onClick={() => setLocationOpen(true)}><MapPin /><span>Entregar en<small>{region}</small></span><ChevronDown size={15} /></button>
           <button className="header-action" type="button" onClick={() => setAccountOpen(true)}><CircleUserRound /><span>{session ? `Hola, ${session.name.split(" ")[0]}` : "Hola, ingresa"}<small>Mi cuenta</small></span></button>
+          {isUserAdmin(session) && (
+            <Link
+              href="/admin"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                padding: "6px 12px",
+                background: "var(--green-100)",
+                color: "var(--green-900)",
+                border: "1px solid #c7decb",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+              title="Panel de Administración"
+            >
+              <ShieldCheck size={15} color="var(--green-800)" />
+              <span>Admin</span>
+            </Link>
+          )}
           <button className="cart-button" type="button" onClick={() => setCartOpen(true)} aria-label={`Carrito con ${cartCount} productos`}><ShoppingCart /><span>{cartCount}</span></button>
         </div>
 
