@@ -6,20 +6,29 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  Calendar,
   CheckCircle2,
+  Clock,
   Copy,
   Database,
   Edit3,
   ExternalLink,
+  FileText,
+  Filter,
   Layers,
   Leaf,
   Package,
   Plus,
   RefreshCw,
+  Search,
   Send,
   Server,
   ShieldCheck,
+  ShoppingCart,
+  Tag,
   Terminal,
+  Truck,
+  User,
   X,
   XCircle,
 } from "lucide-react";
@@ -54,6 +63,44 @@ type ProductAdmin = {
   stockActual: number;
   stockMinimo: number;
   activo: boolean;
+};
+
+type SaleItemAdmin = {
+  productoId: number;
+  nombre?: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+};
+
+type SaleAdmin = {
+  id: number;
+  clienteId: string;
+  fechaCreacion: string;
+  estado: string;
+  subtotal: number;
+  total: number;
+  motivoCancelacion?: string;
+  items: SaleItemAdmin[];
+};
+
+type PurchaseDetailAdmin = {
+  id?: number;
+  productoId: number;
+  nombre?: string;
+  cantidad: number;
+  precioUnitario: number;
+  subtotal: number;
+};
+
+type PurchaseAdmin = {
+  id: number;
+  proveedorId: number;
+  proveedorNombre?: string;
+  fechaCreacion: string;
+  estado: string;
+  total: number;
+  detalles: PurchaseDetailAdmin[];
 };
 
 const monitoredEndpoints: ApiEndpoint[] = [
@@ -164,28 +211,81 @@ const fallbackInitialProducts: ProductAdmin[] = [
 
 const quickRequestEndpoints = [
   { label: "GET /api/bff/catalogo (Público)", endpoint: "/api/bff/catalogo", method: "GET" },
-  { label: "GET /api/bff/inventario (Admin)", endpoint: "/api/bff/inventario", method: "GET" },
+  { label: "GET /api/bff/admin/inventario (Admin)", endpoint: "/api/bff/admin/inventario", method: "GET" },
   { label: "GET /api/bff/inventario/stock-bajo (Admin)", endpoint: "/api/bff/inventario/stock-bajo", method: "GET" },
   { label: "GET /api/bff/admin/ventas (Admin)", endpoint: "/api/bff/admin/ventas", method: "GET" },
-  { label: "GET /api/bff/compras (Admin)", endpoint: "/api/bff/compras", method: "GET" },
+  { label: "GET /api/bff/admin/compras (Admin)", endpoint: "/api/bff/admin/compras", method: "GET" },
   { label: "GET /api/bff/admin/dashboard (Agregado)", endpoint: "/api/bff/admin/dashboard", method: "GET" },
   { label: "GET /actuator/health (BFF)", endpoint: "/actuator/health", method: "GET" },
 ];
 
+const fallbackInitialSales: SaleAdmin[] = [
+  {
+    id: 1,
+    clienteId: "649894e8-2011-70ec-6e8a-35a6f59c3c14",
+    fechaCreacion: new Date().toISOString(),
+    estado: "CONFIRMADA",
+    subtotal: 91980,
+    total: 91980,
+    items: [
+      {
+        productoId: 1,
+        nombre: "Semillas de Maíz Híbrido 25 kg",
+        cantidad: 2,
+        precioUnitario: 45990,
+        subtotal: 91980,
+      },
+    ],
+  },
+];
+
+const fallbackInitialPurchases: PurchaseAdmin[] = [
+  {
+    id: 1,
+    proveedorId: 101,
+    proveedorNombre: "AgroQuímica del Sur S.A.",
+    fechaCreacion: new Date(Date.now() - 86400000).toISOString(),
+    estado: "COMPLETADA",
+    total: 450000,
+    detalles: [
+      {
+        id: 1,
+        productoId: 3,
+        nombre: "Fertilizante NPK Granulado 25 kg",
+        cantidad: 25,
+        precioUnitario: 18000,
+        subtotal: 450000,
+      },
+    ],
+  },
+];
+
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [activeTab, setActiveTab] = useState<"apis" | "inventory" | "console">("apis");
+  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console">("inventory");
+
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
 
   // Ping Monitor State
   const [pingResults, setPingResults] = useState<Record<string, PingResult>>({});
   const [isPingingAll, setIsPingingAll] = useState(false);
 
-  // Inventory Manager State
+  // Inventory Manager State (ms-inventario)
   const [products, setProducts] = useState<ProductAdmin[]>(fallbackInitialProducts);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [productFeedback, setProductFeedback] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductAdmin | null>(null);
+
+  // Sales State (ms-ventas)
+  const [sales, setSales] = useState<SaleAdmin[]>(fallbackInitialSales);
+  const [isLoadingSales, setIsLoadingSales] = useState(false);
+
+  // Purchases State (ms-compras)
+  const [purchases, setPurchases] = useState<PurchaseAdmin[]>(fallbackInitialPurchases);
+  const [isLoadingPurchases, setIsLoadingPurchases] = useState(false);
 
   // Form State para Nuevo Producto
   const [newSku, setNewSku] = useState("");
@@ -214,6 +314,8 @@ export default function AdminPage() {
     const currentSession = readAuthSession();
     setSession(currentSession);
     loadInventory(currentSession);
+    loadSales();
+    loadPurchases();
   }, []);
 
   const API_BASE_URL = (
@@ -287,14 +389,18 @@ export default function AdminPage() {
     setIsPingingAll(false);
   }
 
-  // Cargar lista de productos desde el backend
+  // Cargar lista de productos desde el backend (ms-inventario)
   async function loadInventory(activeSession: AuthSession | null) {
     setIsLoadingProducts(true);
     try {
-      // Intentar primero con el endpoint administrativo de inventario
-      const endpoint = isUserAdmin(activeSession) ? "/api/bff/inventario" : "/api/bff/catalogo";
-      const data = await apiRequest<any>(endpoint);
-      const items = Array.isArray(data) ? data : data?.content || [];
+      const endpoint = isUserAdmin(activeSession) ? "/api/bff/admin/inventario" : "/api/bff/catalogo";
+      let data: any;
+      try {
+        data = await apiRequest<any>(endpoint);
+      } catch {
+        data = await apiRequest<any>("/api/bff/inventario");
+      }
+      const items = Array.isArray(data) ? data : data?.content || data?.contenido || [];
       if (items.length > 0) {
         const mapped: ProductAdmin[] = items.map((p: any) => ({
           id: p.id,
@@ -310,10 +416,83 @@ export default function AdminPage() {
         setProducts(mapped);
       }
     } catch (err: unknown) {
-      // Si el BFF no está accesible o es sesión local, mantenemos los productos iniciales de RDS
       console.warn("Utilizando datos iniciales de inventario debido a:", err);
     } finally {
       setIsLoadingProducts(false);
+    }
+  }
+
+  // Cargar lista de ventas desde el backend (ms-ventas / db_ventas)
+  async function loadSales(authSession?: AuthSession | null) {
+    setIsLoadingSales(true);
+    try {
+      let data: any;
+      try {
+        data = await apiRequest<any>("/api/bff/admin/ventas");
+      } catch {
+        data = await apiRequest<any>("/api/bff/ventas");
+      }
+      const list = Array.isArray(data) ? data : data?.contenido || data?.content || [];
+      if (list.length > 0) {
+        const mapped: SaleAdmin[] = list.map((s: any) => ({
+          id: s.id,
+          clienteId: s.clienteId || "Cliente Registrado",
+          fechaCreacion: s.fechaCreacion || s.createdAt || new Date().toISOString(),
+          estado: (s.estado || "CONFIRMADA").toUpperCase(),
+          subtotal: Number(s.subtotal || s.total || 0),
+          total: Number(s.total || s.subtotal || 0),
+          motivoCancelacion: s.motivoCancelacion,
+          items: (s.items || s.detalles || []).map((it: any) => ({
+            productoId: it.productoId || it.id || 0,
+            nombre: it.nombre || `Insumo #${it.productoId || ""}`,
+            cantidad: Number(it.cantidad || 1),
+            precioUnitario: Number(it.precioUnitario || it.precio || 0),
+            subtotal: Number(it.subtotal || 0),
+          })),
+        }));
+        setSales(mapped);
+      }
+    } catch (err: unknown) {
+      console.warn("Utilizando datos locales de ventas debido a:", err);
+    } finally {
+      setIsLoadingSales(false);
+    }
+  }
+
+  // Cargar lista de compras/abastecimiento desde el backend (ms-compras / db_compras)
+  async function loadPurchases(authSession?: AuthSession | null) {
+    setIsLoadingPurchases(true);
+    try {
+      let data: any;
+      try {
+        data = await apiRequest<any>("/api/bff/admin/compras");
+      } catch {
+        data = await apiRequest<any>("/api/bff/compras");
+      }
+      const list = Array.isArray(data) ? data : data?.contenido || data?.content || [];
+      if (list.length > 0) {
+        const mapped: PurchaseAdmin[] = list.map((c: any) => ({
+          id: c.id,
+          proveedorId: c.proveedorId || 101,
+          proveedorNombre: c.proveedorNombre || `Proveedor #${c.proveedorId || 101}`,
+          fechaCreacion: c.fechaCreacion || c.createdAt || new Date().toISOString(),
+          estado: (c.estado || "COMPLETADA").toUpperCase(),
+          total: Number(c.total || 0),
+          detalles: (c.detalles || c.items || []).map((it: any) => ({
+            id: it.id,
+            productoId: it.productoId || 0,
+            nombre: it.nombre || `Insumo #${it.productoId || ""}`,
+            cantidad: Number(it.cantidad || 0),
+            precioUnitario: Number(it.precioUnitario || 0),
+            subtotal: Number(it.subtotal || 0),
+          })),
+        }));
+        setPurchases(mapped);
+      }
+    } catch (err: unknown) {
+      console.warn("Utilizando datos locales de compras debido a:", err);
+    } finally {
+      setIsLoadingPurchases(false);
     }
   }
 
@@ -480,6 +659,71 @@ export default function AdminPage() {
     }
   }
 
+  function formatDate(isoString?: string) {
+    if (!isoString) return "-";
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleString("es-CL", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return isoString;
+    }
+  }
+
+  // Filtros dinámicos en tiempo real para las 3 tablas RDS
+  const q = searchQuery.trim().toLowerCase();
+
+  const filteredProducts = products.filter((p) => {
+    const matchesSearch =
+      !q ||
+      p.sku.toLowerCase().includes(q) ||
+      p.nombre.toLowerCase().includes(q) ||
+      p.categoria.toLowerCase().includes(q) ||
+      p.id.toString().includes(q);
+
+    const matchesStatus =
+      statusFilter === "ALL" ||
+      (statusFilter === "ACTIVO" && p.activo) ||
+      (statusFilter === "INACTIVO" && !p.activo) ||
+      (statusFilter === "LOW_STOCK" && p.stockActual <= p.stockMinimo);
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const filteredSales = sales.filter((s) => {
+    const matchesSearch =
+      !q ||
+      s.id.toString().includes(q) ||
+      s.clienteId.toLowerCase().includes(q) ||
+      (s.items && s.items.some((it) => (it.nombre || "").toLowerCase().includes(q) || it.productoId.toString().includes(q)));
+
+    const matchesStatus =
+      statusFilter === "ALL" ||
+      s.estado.toUpperCase() === statusFilter.toUpperCase();
+
+    return matchesSearch && matchesStatus;
+  });
+
+  const filteredPurchases = purchases.filter((pc) => {
+    const matchesSearch =
+      !q ||
+      pc.id.toString().includes(q) ||
+      pc.proveedorId.toString().includes(q) ||
+      (pc.proveedorNombre || "").toLowerCase().includes(q) ||
+      (pc.detalles && pc.detalles.some((it) => (it.nombre || "").toLowerCase().includes(q) || it.productoId.toString().includes(q)));
+
+    const matchesStatus =
+      statusFilter === "ALL" ||
+      pc.estado.toUpperCase() === statusFilter.toUpperCase();
+
+    return matchesSearch && matchesStatus;
+  });
+
   return (
     <div style={{ minHeight: "100vh", background: "var(--canvas)", color: "var(--ink)", fontFamily: "sans-serif" }}>
       {/* Top Admin Navigation Header */}
@@ -559,6 +803,81 @@ export default function AdminPage() {
           {/* Navigation Tabs */}
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
+              onClick={() => {
+                setActiveTab("inventory");
+                setSearchQuery("");
+                setStatusFilter("ALL");
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 650,
+                border: "none",
+                cursor: "pointer",
+                background: activeTab === "inventory" ? "var(--green-800)" : "transparent",
+                color: activeTab === "inventory" ? "#fff" : "var(--ink-soft)",
+                transition: "all 0.15s",
+              }}
+            >
+              <Package size={16} />
+              <span>Inventario</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab("sales");
+                setSearchQuery("");
+                setStatusFilter("ALL");
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 650,
+                border: "none",
+                cursor: "pointer",
+                background: activeTab === "sales" ? "var(--green-800)" : "transparent",
+                color: activeTab === "sales" ? "#fff" : "var(--ink-soft)",
+                transition: "all 0.15s",
+              }}
+            >
+              <ShoppingCart size={16} />
+              <span>Ventas</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab("purchases");
+                setSearchQuery("");
+                setStatusFilter("ALL");
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 650,
+                border: "none",
+                cursor: "pointer",
+                background: activeTab === "purchases" ? "var(--green-800)" : "transparent",
+                color: activeTab === "purchases" ? "#fff" : "var(--ink-soft)",
+                transition: "all 0.15s",
+              }}
+            >
+              <Truck size={16} />
+              <span>Compras</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab("apis")}
               style={{
                 display: "inline-flex",
@@ -576,28 +895,7 @@ export default function AdminPage() {
               }}
             >
               <Activity size={16} />
-              <span>Monitor de APIs</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("inventory")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "inventory" ? "var(--green-800)" : "transparent",
-                color: activeTab === "inventory" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Database size={16} />
-              <span>Inventario RDS</span>
+              <span>Monitor APIs</span>
             </button>
 
             <button
@@ -618,7 +916,7 @@ export default function AdminPage() {
               }}
             >
               <Terminal size={16} />
-              <span>Consola Rápida</span>
+              <span>Consola</span>
             </button>
           </div>
         </div>
@@ -825,171 +1123,792 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* TAB 2: GESTOR DE INVENTARIO (RDS) */}
-        {activeTab === "inventory" && (
+        {/* TAB: VISOR MULTI-SERVICIO Y AUDITORÍA RDS (INVENTARIO / VENTAS / COMPRAS) */}
+        {(activeTab === "inventory" || activeTab === "sales" || activeTab === "purchases") && (
           <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+            {/* Service & Database Header */}
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 20 }}>
               <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "2px 8px",
+                      background: "var(--green-100)",
+                      color: "var(--green-900)",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      fontFamily: "monospace",
+                    }}
+                  >
+                    <Database size={12} />
+                    {activeTab === "inventory" && "db_inventario.productos"}
+                    {activeTab === "sales" && "db_ventas.ventas"}
+                    {activeTab === "purchases" && "db_compras.compras"}
+                  </span>
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                      padding: "2px 8px",
+                      background: "#eef2f6",
+                      color: "#334155",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Server size={12} />
+                    {activeTab === "inventory" && "ms-inventario (ECS)"}
+                    {activeTab === "sales" && "ms-ventas (ECS)"}
+                    {activeTab === "purchases" && "ms-compras (ECS)"}
+                  </span>
+                </div>
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--green-950)", margin: 0 }}>
-                  Gestor de Insumos y Existencias (PostgreSQL RDS)
+                  {activeTab === "inventory" && "Auditoría de Insumos y Existencias"}
+                  {activeTab === "sales" && "Auditoría de Órdenes y Ventas Realizadas"}
+                  {activeTab === "purchases" && "Auditoría de Órdenes de Abastecimiento"}
                 </h2>
-                <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-                  Control directo sobre la tabla <code>productos</code> de <code>db_inventario</code> con persistencia en Amazon RDS.
+                <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4, marginBottom: 0 }}>
+                  {activeTab === "inventory" && "Control directo sobre el catálogo y stock persistido en Amazon RDS PostgreSQL."}
+                  {activeTab === "sales" && "Historial de transacciones de compra registradas por clientes autenticados."}
+                  {activeTab === "purchases" && "Registro de compras a proveedores e insumos incorporados al centro logístico."}
                 </p>
               </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Service Sub-tabs / Quick Switcher */}
+              <div
+                style={{
+                  display: "inline-flex",
+                  background: "#edf3ee",
+                  padding: 4,
+                  borderRadius: 10,
+                  gap: 4,
+                  border: "1px solid var(--line-soft)",
+                }}
+              >
                 <button
-                  onClick={() => loadInventory(session)}
-                  disabled={isLoadingProducts}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("inventory");
+                    setSearchQuery("");
+                    setStatusFilter("ALL");
+                  }}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 6,
-                    padding: "9px 14px",
-                    background: "var(--surface)",
-                    color: "var(--ink)",
-                    border: "1px solid var(--line)",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    fontWeight: 650,
+                    padding: "7px 12px",
+                    borderRadius: 7,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    border: "none",
                     cursor: "pointer",
+                    background: activeTab === "inventory" ? "var(--surface)" : "transparent",
+                    color: activeTab === "inventory" ? "var(--green-950)" : "var(--muted)",
+                    boxShadow: activeTab === "inventory" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                    transition: "all 0.15s",
                   }}
                 >
-                  <RefreshCw size={15} className={isLoadingProducts ? "animate-spin" : ""} />
-                  <span>Refrescar</span>
+                  <Package size={14} />
+                  <span>Inventario</span>
+                  <span
+                    style={{
+                      padding: "1px 6px",
+                      borderRadius: 10,
+                      background: activeTab === "inventory" ? "var(--green-100)" : "rgba(0,0,0,0.06)",
+                      color: activeTab === "inventory" ? "var(--green-900)" : "var(--muted)",
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {products.length}
+                  </span>
                 </button>
 
                 <button
-                  onClick={() => setShowCreateModal(true)}
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("sales");
+                    setSearchQuery("");
+                    setStatusFilter("ALL");
+                  }}
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
                     gap: 6,
-                    padding: "9px 16px",
-                    background: "var(--green-700)",
-                    color: "#fff",
-                    border: "none",
-                    borderRadius: 8,
-                    fontSize: 13,
+                    padding: "7px 12px",
+                    borderRadius: 7,
+                    fontSize: 12,
                     fontWeight: 700,
+                    border: "none",
                     cursor: "pointer",
+                    background: activeTab === "sales" ? "var(--surface)" : "transparent",
+                    color: activeTab === "sales" ? "var(--green-950)" : "var(--muted)",
+                    boxShadow: activeTab === "sales" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                    transition: "all 0.15s",
                   }}
                 >
-                  <Plus size={16} />
-                  <span>Nuevo Insumo</span>
+                  <ShoppingCart size={14} />
+                  <span>Ventas</span>
+                  <span
+                    style={{
+                      padding: "1px 6px",
+                      borderRadius: 10,
+                      background: activeTab === "sales" ? "var(--green-100)" : "rgba(0,0,0,0.06)",
+                      color: activeTab === "sales" ? "var(--green-900)" : "var(--muted)",
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {sales.length}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab("purchases");
+                    setSearchQuery("");
+                    setStatusFilter("ALL");
+                  }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "7px 12px",
+                    borderRadius: 7,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    border: "none",
+                    cursor: "pointer",
+                    background: activeTab === "purchases" ? "var(--surface)" : "transparent",
+                    color: activeTab === "purchases" ? "var(--green-950)" : "var(--muted)",
+                    boxShadow: activeTab === "purchases" ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  <Truck size={14} />
+                  <span>Compras</span>
+                  <span
+                    style={{
+                      padding: "1px 6px",
+                      borderRadius: 10,
+                      background: activeTab === "purchases" ? "var(--green-100)" : "rgba(0,0,0,0.06)",
+                      color: activeTab === "purchases" ? "var(--green-900)" : "var(--muted)",
+                      fontSize: 10,
+                      fontWeight: 800,
+                    }}
+                  >
+                    {purchases.length}
+                  </span>
                 </button>
               </div>
             </div>
 
-            {/* Products Table */}
+            {/* Filter and Search Bar */}
             <div
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--line)",
                 borderRadius: 12,
-                overflow: "hidden",
+                padding: "14px 18px",
+                marginBottom: 16,
                 boxShadow: "var(--shadow-sm)",
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
               }}
             >
-              <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: "#f5f8f5", borderBottom: "1px solid var(--line)", color: "var(--ink-soft)" }}>
-                    <th style={{ padding: "12px 16px", fontWeight: 700 }}>SKU</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 700 }}>Nombre del Insumo</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 700 }}>Categoría</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 700 }}>Precio (CLP)</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 700 }}>Stock Actual</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 700 }}>Mínimo</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 700 }}>Estado</th>
-                    <th style={{ padding: "12px 16px", fontWeight: 700, textAlign: "right" }}>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {products.map((p) => {
-                    const isLowStock = p.stockActual <= p.stockMinimo;
-                    return (
-                      <tr key={p.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
-                        <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--green-900)" }}>
-                          {p.sku}
-                        </td>
-                        <td style={{ padding: "14px 16px" }}>
-                          <strong>{p.nombre}</strong>
-                          {p.descripcion && (
-                            <small style={{ display: "block", color: "var(--muted)", fontSize: 11, marginTop: 2 }}>
-                              {p.descripcion}
-                            </small>
-                          )}
-                        </td>
-                        <td style={{ padding: "14px 16px" }}>
-                          <span style={{ padding: "3px 8px", background: "#f0f4f1", borderRadius: 4, fontSize: 12 }}>
-                            {p.categoria}
-                          </span>
-                        </td>
-                        <td style={{ padding: "14px 16px", fontWeight: 650 }}>
-                          ${p.precioVenta.toLocaleString("es-CL")}
-                        </td>
-                        <td style={{ padding: "14px 16px" }}>
-                          <span
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 4,
-                              fontWeight: 700,
-                              color: isLowStock ? "var(--danger)" : "var(--green-800)",
-                            }}
-                          >
-                            {isLowStock && <AlertTriangle size={14} />}
-                            {p.stockActual} un.
-                          </span>
-                        </td>
-                        <td style={{ padding: "14px 16px", color: "var(--muted)" }}>
-                          {p.stockMinimo} un.
-                        </td>
-                        <td style={{ padding: "14px 16px" }}>
-                          <span
-                            style={{
-                              display: "inline-block",
-                              width: 8,
-                              height: 8,
-                              borderRadius: "50%",
-                              background: p.activo ? "#2e8a62" : "#a84732",
-                              marginRight: 6,
-                            }}
-                          />
-                          <span style={{ fontSize: 12 }}>{p.activo ? "Activo" : "Inactivo"}</span>
-                        </td>
-                        <td style={{ padding: "14px 16px", textAlign: "right" }}>
-                          <button
-                            onClick={() => {
-                              setEditingProduct(p);
-                              setEditPrecio(p.precioVenta);
-                              setEditStock(p.stockActual);
-                            }}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              gap: 5,
-                              padding: "5px 10px",
-                              background: "var(--green-100)",
-                              color: "var(--green-900)",
-                              border: "none",
-                              borderRadius: 6,
-                              fontSize: 12,
-                              fontWeight: 650,
-                              cursor: "pointer",
-                            }}
-                          >
-                            <Edit3 size={13} />
-                            <span>Editar</span>
-                          </button>
+              <div style={{ display: "flex", flex: 1, minWidth: 260, alignItems: "center", gap: 10, position: "relative" }}>
+                <Search size={16} style={{ position: "absolute", left: 12, color: "var(--muted)" }} />
+                <input
+                  type="text"
+                  placeholder={
+                    activeTab === "inventory"
+                      ? "Buscar por SKU, nombre, categoría o ID..."
+                      : activeTab === "sales"
+                      ? "Buscar por ID orden, cliente o insumo..."
+                      : "Buscar por ID compra, proveedor o insumo..."
+                  }
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px 9px 36px",
+                    borderRadius: 8,
+                    border: "1px solid var(--line)",
+                    fontSize: 13,
+                    background: "#fafbfa",
+                    color: "var(--ink)",
+                    outline: "none",
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery("")}
+                    style={{
+                      position: "absolute",
+                      right: 10,
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--muted)",
+                      cursor: "pointer",
+                      padding: 2,
+                    }}
+                    title="Limpiar búsqueda"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Filter size={14} style={{ color: "var(--muted)" }} />
+                  <select
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid var(--line)",
+                      fontSize: 12,
+                      fontWeight: 650,
+                      background: "#fafbfa",
+                      color: "var(--ink)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <option value="ALL">Todos los estados</option>
+                    {activeTab === "inventory" && (
+                      <>
+                        <option value="ACTIVO">Solo Activos</option>
+                        <option value="INACTIVO">Solo Inactivos</option>
+                        <option value="LOW_STOCK">⚠️ Stock Bajo / Crítico</option>
+                      </>
+                    )}
+                    {activeTab === "sales" && (
+                      <>
+                        <option value="CONFIRMADA">Confirmadas (Éxito)</option>
+                        <option value="PENDIENTE">Pendientes</option>
+                        <option value="CANCELADA">Canceladas</option>
+                      </>
+                    )}
+                    {activeTab === "purchases" && (
+                      <>
+                        <option value="COMPLETADA">Completadas / Recibidas</option>
+                        <option value="EN_TRANSITO">En Tránsito</option>
+                        <option value="CANCELADA">Canceladas</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+
+                {/* Individual Refresh Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (activeTab === "inventory") loadInventory(session);
+                    else if (activeTab === "sales") loadSales(session);
+                    else if (activeTab === "purchases") loadPurchases(session);
+                  }}
+                  disabled={
+                    activeTab === "inventory"
+                      ? isLoadingProducts
+                      : activeTab === "sales"
+                      ? isLoadingSales
+                      : isLoadingPurchases
+                  }
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 14px",
+                    background: "var(--surface)",
+                    color: "var(--ink)",
+                    border: "1px solid var(--line)",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    fontWeight: 650,
+                    cursor: "pointer",
+                  }}
+                  title="Refrescar datos del microservicio"
+                >
+                  <RefreshCw
+                    size={14}
+                    className={
+                      (activeTab === "inventory" && isLoadingProducts) ||
+                      (activeTab === "sales" && isLoadingSales) ||
+                      (activeTab === "purchases" && isLoadingPurchases)
+                        ? "animate-spin"
+                        : ""
+                    }
+                  />
+                  <span>Refrescar</span>
+                </button>
+
+                {activeTab === "inventory" && (
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "8px 14px",
+                      background: "var(--green-700)",
+                      color: "#fff",
+                      border: "none",
+                      borderRadius: 8,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <Plus size={15} />
+                    <span>Nuevo Insumo</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Live Filter Indicator Bar */}
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "6px 4px",
+                marginBottom: 10,
+                fontSize: 12,
+                color: "var(--muted)",
+              }}
+            >
+              <div>
+                Mostrando{" "}
+                <strong style={{ color: "var(--ink)" }}>
+                  {activeTab === "inventory"
+                    ? filteredProducts.length
+                    : activeTab === "sales"
+                    ? filteredSales.length
+                    : filteredPurchases.length}
+                </strong>{" "}
+                de{" "}
+                <strong>
+                  {activeTab === "inventory"
+                    ? products.length
+                    : activeTab === "sales"
+                    ? sales.length
+                    : purchases.length}
+                </strong>{" "}
+                registros en tiempo real desde RDS
+              </div>
+
+              {(searchQuery || statusFilter !== "ALL") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setStatusFilter("ALL");
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "var(--green-800)",
+                    fontSize: 12,
+                    fontWeight: 650,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  Limpiar filtros activos
+                </button>
+              )}
+            </div>
+
+            {/* 1. TABLA INVENTARIO */}
+            {activeTab === "inventory" && (
+              <div
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f5f8f5", borderBottom: "1px solid var(--line)", color: "var(--ink-soft)" }}>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>SKU</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Nombre del Insumo</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Categoría</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Precio (CLP)</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Stock Actual</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Mínimo</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Estado</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700, textAlign: "right" }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProducts.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} style={{ padding: "36px 16px", textAlign: "center", color: "var(--muted)" }}>
+                          No se encontraron insumos que coincidan con la búsqueda o filtro aplicado.
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    ) : (
+                      filteredProducts.map((p) => {
+                        const isLowStock = p.stockActual <= p.stockMinimo;
+                        return (
+                          <tr key={p.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
+                            <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--green-900)" }}>
+                              {p.sku}
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <strong>{p.nombre}</strong>
+                              {p.descripcion && (
+                                <small style={{ display: "block", color: "var(--muted)", fontSize: 11, marginTop: 2 }}>
+                                  {p.descripcion}
+                                </small>
+                              )}
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span style={{ padding: "3px 8px", background: "#f0f4f1", borderRadius: 4, fontSize: 12 }}>
+                                {p.categoria}
+                              </span>
+                            </td>
+                            <td style={{ padding: "14px 16px", fontWeight: 650 }}>
+                              ${p.precioVenta.toLocaleString("es-CL")}
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  fontWeight: 700,
+                                  color: isLowStock ? "var(--danger)" : "var(--green-800)",
+                                }}
+                              >
+                                {isLowStock && <AlertTriangle size={14} />}
+                                {p.stockActual} un.
+                              </span>
+                            </td>
+                            <td style={{ padding: "14px 16px", color: "var(--muted)" }}>
+                              {p.stockMinimo} un.
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: "50%",
+                                  background: p.activo ? "#2e8a62" : "#a84732",
+                                  marginRight: 6,
+                                }}
+                              />
+                              <span style={{ fontSize: 12 }}>{p.activo ? "Activo" : "Inactivo"}</span>
+                            </td>
+                            <td style={{ padding: "14px 16px", textAlign: "right" }}>
+                              <button
+                                onClick={() => {
+                                  setEditingProduct(p);
+                                  setEditPrecio(p.precioVenta);
+                                  setEditStock(p.stockActual);
+                                }}
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 5,
+                                  padding: "5px 10px",
+                                  background: "var(--green-100)",
+                                  color: "var(--green-900)",
+                                  border: "none",
+                                  borderRadius: 6,
+                                  fontSize: 12,
+                                  fontWeight: 650,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <Edit3 size={13} />
+                                <span>Editar</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 2. TABLA VENTAS */}
+            {activeTab === "sales" && (
+              <div
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f5f8f5", borderBottom: "1px solid var(--line)", color: "var(--ink-soft)" }}>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}># Orden / ID</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Cliente (UUID Cognito)</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Fecha y Hora</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Insumos Comprados</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Subtotal</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Total (CLP)</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700, textAlign: "center" }}>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSales.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} style={{ padding: "36px 16px", textAlign: "center", color: "var(--muted)" }}>
+                          No se encontraron órdenes de venta que coincidan con la búsqueda o filtro aplicado.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredSales.map((s) => {
+                        const isConfirmed = s.estado.toUpperCase() === "CONFIRMADA";
+                        const isPending = s.estado.toUpperCase() === "PENDIENTE";
+                        return (
+                          <tr key={s.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
+                            <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--green-900)" }}>
+                              #ORD-{s.id}
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <User size={13} style={{ color: "var(--muted)" }} />
+                                <span
+                                  style={{
+                                    fontFamily: "monospace",
+                                    fontSize: 12,
+                                    background: "#f3f4f6",
+                                    padding: "2px 6px",
+                                    borderRadius: 4,
+                                    maxWidth: 200,
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                  }}
+                                  title={s.clienteId}
+                                >
+                                  {s.clienteId}
+                                </span>
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px", fontSize: 12, color: "var(--ink-soft)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <Clock size={12} style={{ color: "var(--muted)" }} />
+                                {formatDate(s.fechaCreacion)}
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {s.items && s.items.length > 0 ? (
+                                  s.items.map((it, idx) => (
+                                    <span
+                                      key={idx}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 4,
+                                        fontSize: 11,
+                                        background: "#f0f4f1",
+                                        padding: "2px 6px",
+                                        borderRadius: 4,
+                                        color: "var(--green-950)",
+                                      }}
+                                    >
+                                      <strong>{it.cantidad}x</strong> {it.nombre || `Producto #${it.productoId}`} (
+                                      ${it.precioUnitario?.toLocaleString("es-CL")})
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Sin ítems especificados</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px", color: "var(--muted)", fontSize: 12 }}>
+                              ${(s.subtotal || s.total).toLocaleString("es-CL")}
+                            </td>
+                            <td style={{ padding: "14px 16px", fontWeight: 700, color: "var(--green-950)" }}>
+                              ${s.total.toLocaleString("es-CL")}
+                            </td>
+                            <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "3px 10px",
+                                  borderRadius: 12,
+                                  fontSize: 11,
+                                  fontWeight: 750,
+                                  background: isConfirmed
+                                    ? "#dcfce7"
+                                    : isPending
+                                    ? "#fef3c7"
+                                    : "#fee2e2",
+                                  color: isConfirmed
+                                    ? "#166534"
+                                    : isPending
+                                    ? "#92400e"
+                                    : "#991b1b",
+                                }}
+                              >
+                                {isConfirmed ? (
+                                  <CheckCircle2 size={12} />
+                                ) : isPending ? (
+                                  <Clock size={12} />
+                                ) : (
+                                  <XCircle size={12} />
+                                )}
+                                {s.estado}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* 3. TABLA COMPRAS */}
+            {activeTab === "purchases" && (
+              <div
+                style={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  boxShadow: "var(--shadow-sm)",
+                }}
+              >
+                <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ background: "#f5f8f5", borderBottom: "1px solid var(--line)", color: "var(--ink-soft)" }}>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}># Orden Compra</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Proveedor</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Fecha Abastecimiento</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Insumos Adquiridos</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700 }}>Monto Total (CLP)</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700, textAlign: "center" }}>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredPurchases.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} style={{ padding: "36px 16px", textAlign: "center", color: "var(--muted)" }}>
+                          No se encontraron órdenes de compra a proveedores que coincidan con la búsqueda.
+                        </td>
+                      </tr>
+                    ) : (
+                      filteredPurchases.map((pc) => {
+                        const isDone = pc.estado.toUpperCase() === "COMPLETADA" || pc.estado.toUpperCase() === "RECIBIDA";
+                        const isTransit = pc.estado.toUpperCase() === "EN_TRANSITO";
+                        return (
+                          <tr key={pc.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
+                            <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--green-900)" }}>
+                              #CMP-{pc.id}
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <strong>{pc.proveedorNombre || `Proveedor #${pc.proveedorId}`}</strong>
+                              <small style={{ display: "block", color: "var(--muted)", fontSize: 11 }}>
+                                ID Proveedor: {pc.proveedorId}
+                              </small>
+                            </td>
+                            <td style={{ padding: "14px 16px", fontSize: 12, color: "var(--ink-soft)" }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                <Calendar size={12} style={{ color: "var(--muted)" }} />
+                                {formatDate(pc.fechaCreacion)}
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                {pc.detalles && pc.detalles.length > 0 ? (
+                                  pc.detalles.map((it, idx) => (
+                                    <span
+                                      key={idx}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 4,
+                                        fontSize: 11,
+                                        background: "#f0f4f1",
+                                        padding: "2px 6px",
+                                        borderRadius: 4,
+                                        color: "var(--green-950)",
+                                      }}
+                                    >
+                                      <strong>{it.cantidad} un.</strong> {it.nombre || `Insumo #${it.productoId}`} (
+                                      ${it.precioUnitario?.toLocaleString("es-CL")})
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span style={{ fontSize: 11, color: "var(--muted)" }}>Sin ítems detallados</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ padding: "14px 16px", fontWeight: 700, color: "var(--green-950)" }}>
+                              ${pc.total.toLocaleString("es-CL")}
+                            </td>
+                            <td style={{ padding: "14px 16px", textAlign: "center" }}>
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                  padding: "3px 10px",
+                                  borderRadius: 12,
+                                  fontSize: 11,
+                                  fontWeight: 750,
+                                  background: isDone
+                                    ? "#dcfce7"
+                                    : isTransit
+                                    ? "#e0e7ff"
+                                    : "#fee2e2",
+                                  color: isDone
+                                    ? "#166534"
+                                    : isTransit
+                                    ? "#3730a3"
+                                    : "#991b1b",
+                                }}
+                              >
+                                {isDone ? (
+                                  <CheckCircle2 size={12} />
+                                ) : isTransit ? (
+                                  <Truck size={12} />
+                                ) : (
+                                  <XCircle size={12} />
+                                )}
+                                {pc.estado}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
 
