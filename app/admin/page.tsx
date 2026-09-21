@@ -402,6 +402,7 @@ export default function AdminPage() {
           categoria: editingProduct.categoria,
           descripcion: editingProduct.descripcion || "",
           precioVenta: Number(editPrecio),
+          stockActual: Number(editStock),
           stockMinimo: editingProduct.stockMinimo,
         }),
       });

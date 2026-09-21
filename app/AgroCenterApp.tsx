@@ -235,11 +235,11 @@ export default function AgroCenterApp() {
               id: p.id,
               name: p.nombre || p.name,
               category: p.categoria || p.category || "General",
-              price: p.precio || p.price || 0,
+              price: p.precioVenta ?? p.precio ?? p.price ?? 0,
               oldPrice: p.precioAnterior || p.oldPrice,
               badge: p.badge || (p.enOferta ? "Oferta" : undefined),
               unit: p.unidad || p.unit || "Unidad",
-              stock: p.stock ?? 10,
+              stock: p.stockActual ?? p.stock ?? 10,
               rating: p.calificacion || p.rating || 4.8,
               description: p.descripcion || p.description || "",
               image:
