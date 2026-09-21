@@ -63,106 +63,42 @@ const categoryOptions = [
   { name: "Maquinaria", icon: Tractor, copy: "Equipos y repuestos" },
 ];
 
-const initialProducts: Product[] = [
-  {
-    id: 1,
-    name: "Fertilizante NPK granulado 25 kg",
-    category: "Fertilizantes",
-    price: 31990,
-    oldPrice: 36990,
-    badge: "14% dcto.",
-    unit: "Saco 25 kg",
-    stock: 34,
-    rating: 4.8,
-    description: "Mezcla equilibrada para apoyar el desarrollo vegetativo y una nutrición homogénea del cultivo.",
-    image: "https://valleyfertilizer.net/wp-content/uploads/2024/02/generic-fertilizer-bag.jpg",
-  },
-  {
-    id: 2,
-    name: "Cinta de riego por goteo 1.000 m",
-    category: "Riego",
-    price: 56990,
-    badge: "Más vendido",
-    unit: "Rollo 1.000 m",
-    stock: 18,
-    rating: 4.9,
-    description: "Cinta flexible de caudal uniforme para hileras, invernaderos y cultivos de temporada.",
-    image: "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=82",
-  },
-  {
-    id: 3,
-    name: "Tijera de poda profesional bypass",
-    category: "Herramientas",
-    price: 18990,
-    oldPrice: 21990,
-    badge: "Oferta web",
-    unit: "Unidad",
-    stock: 42,
-    rating: 4.7,
-    description: "Corte preciso, mango ergonómico y hoja de acero templado para labores intensivas de poda.",
-    image: "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=900&q=82",
-  },
-  {
-    id: 4,
-    name: "Semilla de pradera mezcla premium",
-    category: "Semillas",
-    price: 42990,
-    unit: "Saco 10 kg",
-    stock: 27,
-    rating: 4.8,
-    description: "Mezcla de rápida implantación, seleccionada para buena cobertura y persistencia en el potrero.",
-    image: "https://images.unsplash.com/photo-1492496913980-501348b61469?auto=format&fit=crop&w=900&q=82",
-  },
-  {
-    id: 5,
-    name: "Bioestimulante radicular concentrado",
-    category: "Protección de cultivos",
-    price: 24990,
-    oldPrice: 28990,
-    badge: "Novedad",
-    unit: "Bidón 5 L",
-    stock: 21,
-    rating: 4.6,
-    description: "Fórmula para acompañar el establecimiento del cultivo y favorecer un sistema radicular vigoroso.",
-    image: "https://images.unsplash.com/photo-1585320806297-9794b3e4eeae?auto=format&fit=crop&w=900&q=82",
-  },
-  {
-    id: 6,
-    name: "Kit de mantención para tractor 100 h",
-    category: "Maquinaria",
-    price: 89990,
-    badge: "Stock limitado",
-    unit: "Kit completo",
-    stock: 8,
-    rating: 4.9,
-    description: "Conjunto esencial de filtros y consumibles para la mantención preventiva de maquinaria agrícola.",
-    image: "https://images.unsplash.com/photo-1530267981375-f0de937f5f13?auto=format&fit=crop&w=900&q=82",
-  },
-  {
-    id: 7,
-    name: "Guante agrícola nitrilo reforzado",
-    category: "Herramientas",
-    price: 8990,
-    oldPrice: 10990,
-    badge: "18% dcto.",
-    unit: "Par",
-    stock: 65,
-    rating: 4.5,
-    description: "Protección, agarre y flexibilidad para faenas de campo, bodega y manipulación de materiales.",
-    image: "https://images.unsplash.com/photo-1595841696677-6489ff3f8cd1?auto=format&fit=crop&w=900&q=82",
-  },
-  {
-    id: 8,
-    name: "Manguera agrícola tricapa 3/4",
-    category: "Riego",
-    price: 46990,
-    unit: "Rollo 50 m",
-    stock: 15,
-    rating: 4.7,
-    description: "Manguera resistente a presión y radiación UV, pensada para uso continuo en exteriores.",
-    image: "https://images.unsplash.com/photo-1599685315640-9ceab2f581ca?auto=format&fit=crop&w=900&q=82",
-  },
-];
+function getProductImage(item: any): string {
+  if (item.imagenUrl) return item.imagenUrl;
+  if (item.image) return item.image;
+  const sku = (item.sku || "").toUpperCase();
+  const name = (item.nombre || item.name || "").toLowerCase();
+  const cat = (item.categoria || item.category || "").toLowerCase();
+
+  if (sku.includes("MAIZ") || name.includes("maíz") || name.includes("maiz")) {
+    return "https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=900&q=82";
+  }
+  if (sku.includes("TRIG") || name.includes("trigo")) {
+    return "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=900&q=82";
+  }
+  if (sku.includes("NPK") || name.includes("npk")) {
+    return "https://valleyfertilizer.net/wp-content/uploads/2024/02/generic-fertilizer-bag.jpg";
+  }
+  if (sku.includes("UREA") || name.includes("urea")) {
+    return "https://images.unsplash.com/photo-1628352081506-83c43123ed6d?auto=format&fit=crop&w=900&q=82";
+  }
+  if (sku.includes("TIJ") || name.includes("tijera")) {
+    return "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=900&q=82";
+  }
+  if (cat.includes("semilla")) {
+    return "https://images.unsplash.com/photo-1492496913980-501348b61469?auto=format&fit=crop&w=900&q=82";
+  }
+  if (cat.includes("fertilizante")) {
+    return "https://valleyfertilizer.net/wp-content/uploads/2024/02/generic-fertilizer-bag.jpg";
+  }
+  if (cat.includes("riego")) {
+    return "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=82";
+  }
+  if (cat.includes("herramienta")) {
+    return "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=900&q=82";
+  }
+  return "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=82";
+}
 
 const regions = [
   "Región de Coquimbo",
@@ -201,8 +137,9 @@ export default function AgroCenterApp() {
   const [authError, setAuthError] = useState("");
   const [toast, setToast] = useState("");
 
-  // Estado del catálogo dinámico proveniente del BFF
-  const [catalog, setCatalog] = useState<Product[]>(initialProducts);
+  // Estado del catálogo dinámico proveniente del BFF (fuente de datos única)
+  const [catalog, setCatalog] = useState<Product[]>([]);
+  const [isLoadingCatalog, setIsLoadingCatalog] = useState<boolean>(true);
 
   useEffect(() => {
     completeCognitoSignIn()
@@ -224,36 +161,34 @@ export default function AgroCenterApp() {
       });
   }, []);
 
-  // Cargar catálogo desde GET /api/bff/catalogo cuando hay sesión autenticada
+  // Cargar catálogo exclusivamente desde GET /api/bff/catalogo (disponible para visitantes anónimos y autenticados)
   useEffect(() => {
-    if (session?.accessToken) {
-      apiRequest<any>("/api/bff/catalogo")
-        .then((data) => {
-          const items = Array.isArray(data) ? data : data?.content || [];
-          if (items.length > 0) {
-            const mapped: Product[] = items.map((p: any) => ({
-              id: p.id,
-              name: p.nombre || p.name,
-              category: p.categoria || p.category || "General",
-              price: p.precioVenta ?? p.precio ?? p.price ?? 0,
-              oldPrice: p.precioAnterior || p.oldPrice,
-              badge: p.badge || (p.enOferta ? "Oferta" : undefined),
-              unit: p.unidad || p.unit || "Unidad",
-              stock: p.stockActual ?? p.stock ?? 10,
-              rating: p.calificacion || p.rating || 4.8,
-              description: p.descripcion || p.description || "",
-              image:
-                p.imagenUrl ||
-                p.image ||
-                "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=82",
-            }));
-            setCatalog(mapped);
-          }
-        })
-        .catch((err) => {
-          console.warn("BFF catálogo no disponible o error de red; usando catálogo local:", err.message);
-        });
-    }
+    setIsLoadingCatalog(true);
+    apiRequest<any>("/api/bff/catalogo")
+      .then((data) => {
+        const items = Array.isArray(data) ? data : data?.content || [];
+        const mapped: Product[] = items.map((p: any) => ({
+          id: p.id,
+          name: p.nombre || p.name || `Insumo ${p.sku || p.id}`,
+          category: p.categoria || p.category || "General",
+          price: p.precioVenta ?? p.precio ?? p.price ?? 0,
+          oldPrice: p.precioAnterior || p.oldPrice,
+          badge: p.badge || (p.enOferta ? "Oferta" : undefined),
+          unit: p.unidad || p.unit || "Unidad",
+          stock: p.stockActual ?? p.stock ?? 0,
+          rating: p.calificacion || p.rating || 4.8,
+          description: p.descripcion || p.description || "",
+          image: getProductImage(p),
+        }));
+        setCatalog(mapped);
+      })
+      .catch((err) => {
+        console.warn("BFF catálogo no disponible o error de red:", err.message);
+        setCatalog([]);
+      })
+      .finally(() => {
+        setIsLoadingCatalog(false);
+      });
   }, [session]);
 
   useEffect(() => {
@@ -484,7 +419,15 @@ export default function AgroCenterApp() {
             </article>
           ))}
         </div>
-        {visibleProducts.length === 0 && <div className="empty-products"><Search /><h3>No encontramos coincidencias</h3><p>Prueba con “semillas”, “riego” o “fertilizante”.</p><button type="button" onClick={() => { setQuery(""); setCategory("Todas"); }}>Limpiar búsqueda</button></div>}
+        {isLoadingCatalog && visibleProducts.length === 0 && (
+          <div className="empty-products">
+            <h3>Cargando catálogo oficial...</h3>
+            <p>Conectando con el inventario de AgroCenter en tiempo real.</p>
+          </div>
+        )}
+        {!isLoadingCatalog && visibleProducts.length === 0 && (
+          <div className="empty-products"><Search /><h3>No encontramos coincidencias</h3><p>Prueba con “semillas”, “riego” o “fertilizante”.</p><button type="button" onClick={() => { setQuery(""); setCategory("Todas"); }}>Limpiar búsqueda</button></div>
+        )}
       </section>
 
       <section className="season-banner shell" id="temporada">
