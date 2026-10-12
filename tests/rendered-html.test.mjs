@@ -1,31 +1,24 @@
 import assert from "node:assert/strict";
-import { access } from "node:fs/promises";
 import test from "node:test";
-
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", { headers: { accept: "text/html" } }),
-    { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } },
-    { waitUntil() {}, passThroughOnException() {} },
-  );
-}
-
-test("server-renders AgroCenter Digital", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
+const origin = process.env.TEST_BASE_URL;
+test("admin no entrega el panel antes de verificar permisos", { skip: !origin }, async () => {
+  const response = await fetch(new URL("/admin", origin));
   const html = await response.text();
-  assert.match(html, /<title>AgroCenter Digital<\/title>/i);
-  assert.match(html, /Preparando AgroCenter Digital/);
-  assert.match(html, /Control operativo de compras, ventas e inventario agrícola/);
-  assert.doesNotMatch(html, /codex-preview|Your site is taking shape|Building your site/i);
+  assert.match(html, /Verificando acceso/);
+  assert.doesNotMatch(html, /Administrador Demo|Operador:|Consola de APIs/);
+});
+test("portada institucional y rutas públicas", { skip: !origin && "Configura TEST_BASE_URL con Next en ejecución" }, async () => {
+  const response = await fetch(origin);
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /La tierra nos une/);
+  for (const id of ["nosotros", "soluciones", "contacto"]) assert.ok(html.includes('id="' + id + '"'));
+  assert.ok(html.indexOf("La tierra nos une") < html.indexOf('id="productos"'));
+  assert.doesNotMatch(html, /0[1-4] \/ (Nosotros|Nuestro catálogo|Soluciones)/);
+  for (const path of ["/productos", "/productos/mayoristas", "/admin"]) assert.equal((await fetch(new URL(path, origin))).status, 200);
 });
 
-test("removes the disposable starter preview", async () => {
-  await assert.rejects(access(new URL("../app/_sites-preview/SkeletonPreview.tsx", import.meta.url)));
+test("consulta rechaza datos inválidos sin guardar", { skip: !origin }, async () => {
+  const response = await fetch(new URL("/api/consultas", origin), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "", email: "inválido", message: "" }) });
+  assert.equal(response.status, 400);
 });

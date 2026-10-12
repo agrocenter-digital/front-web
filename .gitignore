@@ -16,6 +16,7 @@
 # next.js
 /.next/
 /.next_old/
+/.next_visual_backup/
 /.vinext/
 /out/
 
@@ -40,3 +41,4 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+/.data/

@@ -1,33 +1,33 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
   Check,
-  ChevronDown,
   CircleUserRound,
   CreditCard,
-  Headphones,
-  Heart,
   Leaf,
-  MapPin,
   Menu,
   Minus,
-  PackageCheck,
   Plus,
-  RotateCcw,
   Search,
   ShieldCheck,
   ShoppingCart,
   Sprout,
-  Tag,
-  Tractor,
-  Truck,
-  Wrench,
   X,
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
+import { usePathname, useRouter } from "next/navigation";
+import { CatalogItem, canBuy } from "@/lib/catalog";
+import { company } from "@/lib/company";
+import { demoFallback } from "@/lib/demo-catalog";
+import ProductAction from "./components/ProductAction";
+import Contact from "./components/Contact";
+import { useScrollReveal } from "./components/useScrollReveal";
+import QuoteDialog from "./components/QuoteDialog";
+import ProductCard, { Product } from "./components/ProductCard";
 import {
   AuthSession,
   beginCognitoSignIn,
@@ -40,78 +40,6 @@ import {
 } from "@/lib/cognito";
 import { apiRequest } from "@/lib/api";
 
-type Product = {
-  id: number;
-  name: string;
-  category: string;
-  price: number;
-  oldPrice?: number;
-  image: string;
-  badge?: string;
-  unit: string;
-  stock: number;
-  rating: number;
-  description: string;
-};
-
-const categoryOptions = [
-  { name: "Semillas", icon: Sprout, copy: "Cultivos y praderas" },
-  { name: "Fertilizantes", icon: Leaf, copy: "Nutrición vegetal" },
-  { name: "Protección de cultivos", icon: ShieldCheck, copy: "Manejo y cuidado" },
-  { name: "Riego", icon: Truck, copy: "Conducción y goteo" },
-  { name: "Herramientas", icon: Wrench, copy: "Trabajo diario" },
-  { name: "Maquinaria", icon: Tractor, copy: "Equipos y repuestos" },
-];
-
-function getProductImage(item: any): string {
-  if (item.imagenUrl) return item.imagenUrl;
-  if (item.image) return item.image;
-  const sku = (item.sku || "").toUpperCase();
-  const name = (item.nombre || item.name || "").toLowerCase();
-  const cat = (item.categoria || item.category || "").toLowerCase();
-
-  if (sku.includes("MAIZ") || name.includes("maíz") || name.includes("maiz")) {
-    return "https://images.unsplash.com/photo-1551754655-cd27e38d2076?auto=format&fit=crop&w=900&q=82";
-  }
-  if (sku.includes("TRIG") || name.includes("trigo")) {
-    return "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=900&q=82";
-  }
-  if (sku.includes("NPK") || name.includes("npk")) {
-    return "https://valleyfertilizer.net/wp-content/uploads/2024/02/generic-fertilizer-bag.jpg";
-  }
-  if (sku.includes("UREA") || name.includes("urea")) {
-    return "https://images.unsplash.com/photo-1628352081506-83c43123ed6d?auto=format&fit=crop&w=900&q=82";
-  }
-  if (sku.includes("TIJ") || name.includes("tijera")) {
-    return "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=900&q=82";
-  }
-  if (cat.includes("semilla")) {
-    return "https://images.unsplash.com/photo-1492496913980-501348b61469?auto=format&fit=crop&w=900&q=82";
-  }
-  if (cat.includes("fertilizante")) {
-    return "https://valleyfertilizer.net/wp-content/uploads/2024/02/generic-fertilizer-bag.jpg";
-  }
-  if (cat.includes("riego")) {
-    return "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=82";
-  }
-  if (cat.includes("herramienta")) {
-    return "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?auto=format&fit=crop&w=900&q=82";
-  }
-  return "https://images.unsplash.com/photo-1625246333195-78d9c38ad449?auto=format&fit=crop&w=900&q=82";
-}
-
-const regions = [
-  "Región de Coquimbo",
-  "Región de Valparaíso",
-  "Región Metropolitana",
-  "Región de O’Higgins",
-  "Región del Maule",
-  "Región de Ñuble",
-  "Región del Biobío",
-  "Región de La Araucanía",
-  "Región de Los Lagos",
-];
-
 const money = new Intl.NumberFormat("es-CL", {
   style: "currency",
   currency: "CLP",
@@ -119,27 +47,49 @@ const money = new Intl.NumberFormat("es-CL", {
 });
 
 export default function AgroCenterApp() {
+  const pathname = usePathname();
+  useScrollReveal(pathname);
+  const router = useRouter();
+  const isWholesale = pathname === "/productos/mayoristas";
+  const isCatalog = pathname.startsWith("/productos");
+  const [quote, setQuote] = useState<{
+    product: Product;
+    quantity: number;
+  } | null>(null);
+  const closeQuote = useCallback(() => setQuote(null), []);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("Todas");
   const [sort, setSort] = useState("featured");
   const [cart, setCart] = useState<Record<number, number>>({});
-  const [wishlist, setWishlist] = useState<number[]>([]);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [wishlist, setWishlist] = useState<number[]>([]);
   const [cartOpen, setCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const [locationOpen, setLocationOpen] = useState(false);
-  const [region, setRegion] = useState("Región Metropolitana");
   const [session, setSession] = useState<AuthSession | null>(null);
   const [authError, setAuthError] = useState("");
   const [toast, setToast] = useState("");
 
   // Estado del catálogo dinámico proveniente del BFF (fuente de datos única)
   const [catalog, setCatalog] = useState<Product[]>([]);
+  const [catalogError, setCatalogError] = useState("");
+  const [reload, setReload] = useState(0);
   const [isLoadingCatalog, setIsLoadingCatalog] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+        document.querySelector<HTMLButtonElement>(".menu-toggle")?.focus();
+      }
+    };
+    document.addEventListener("keydown", dismiss);
+    return () => document.removeEventListener("keydown", dismiss);
+  }, [mobileOpen]);
 
   useEffect(() => {
     completeCognitoSignIn()
@@ -156,40 +106,69 @@ export default function AgroCenterApp() {
           setSession(active);
           setAuthError("");
         } else {
-          setAuthError(error instanceof Error ? error.message : "No fue posible iniciar sesión.");
+          setAuthError(
+            error instanceof Error
+              ? error.message
+              : "No fue posible iniciar sesión.",
+          );
         }
       });
   }, []);
 
-  // Cargar catálogo exclusivamente desde GET /api/bff/catalogo (disponible para visitantes anónimos y autenticados)
+  // Catálogo real; la sustitución de prueba solo se permite en desarrollo y ante un error.
   useEffect(() => {
-    setIsLoadingCatalog(true);
-    apiRequest<any>("/api/bff/catalogo")
-      .then((data) => {
-        const items = Array.isArray(data) ? data : data?.content || [];
-        const mapped: Product[] = items.map((p: any) => ({
-          id: p.id,
-          name: p.nombre || p.name || `Insumo ${p.sku || p.id}`,
-          category: p.categoria || p.category || "General",
-          price: p.precioVenta ?? p.precio ?? p.price ?? 0,
-          oldPrice: p.precioAnterior || p.oldPrice,
-          badge: p.badge || (p.enOferta ? "Oferta" : undefined),
-          unit: p.unidad || p.unit || "Unidad",
-          stock: p.stockActual ?? p.stock ?? 0,
-          rating: p.calificacion || p.rating || 4.8,
-          description: p.descripcion || p.description || "",
-          image: getProductImage(p),
-        }));
-        setCatalog(mapped);
+    const controller = new AbortController();
+    let disposed = false;
+    const timeout = window.setTimeout(() => controller.abort(), 8000);
+    apiRequest<CatalogItem[]>("/api/bff/catalogo", {
+      signal: controller.signal,
+    })
+      .then((items) => {
+        if (!Array.isArray(items))
+          throw new Error("Respuesta de catálogo inválida.");
+        setCatalog(
+          items
+            .filter((p) => p.activo !== false)
+            .map((p) => ({
+              id: p.id,
+              name: p.nombre,
+              category: p.categoria?.trim() || "Sin categoría",
+              price:
+                typeof p.precioVenta === "number" &&
+                Number.isFinite(p.precioVenta)
+                  ? p.precioVenta
+                  : null,
+              unit: p.presentacion || "Unidad",
+              stock: p.stockActual,
+              description: p.descripcion || "",
+              image: p.imagenUrl?.startsWith("https://")
+                ? p.imagenUrl
+                : "/product-placeholder.svg",
+              sku: p.sku,
+              quoteOnly: p.soloCotizacion === true,
+            })),
+        );
+        setCatalogError("");
       })
-      .catch((err) => {
-        console.warn("BFF catálogo no disponible o error de red:", err.message);
-        setCatalog([]);
+      .catch((error: unknown) => {
+        if (disposed) return;
+        setCatalog(demoFallback(process.env.NODE_ENV));
+        setCatalogError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo cargar el catálogo.",
+        );
       })
       .finally(() => {
-        setIsLoadingCatalog(false);
+        window.clearTimeout(timeout);
+        if (!disposed) setIsLoadingCatalog(false);
       });
-  }, [session]);
+    return () => {
+      disposed = true;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [session, reload]);
 
   useEffect(() => {
     if (!toast) return;
@@ -197,38 +176,177 @@ export default function AgroCenterApp() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  const modeCatalog = useMemo(
+    () =>
+      catalog.filter((product) =>
+        isWholesale ? product.quoteOnly : !product.quoteOnly,
+      ),
+    [catalog, isWholesale],
+  );
+
+  const categoryOptions = useMemo(
+    () =>
+      [...new Set(modeCatalog.map((p) => p.category))].sort((a, b) =>
+        a.localeCompare(b, "es"),
+      ),
+    [modeCatalog],
+  );
+
+  useEffect(() => {
+    const revealHash = () => {
+      const id = window.location.hash.slice(1);
+      if (id)
+        requestAnimationFrame(() =>
+          document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }),
+        );
+    };
+    revealHash();
+    const navigate = (event: MouseEvent) => {
+      if (
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.altKey ||
+        event.button !== 0
+      )
+        return;
+      const anchor = (event.target as Element).closest<HTMLAnchorElement>(
+        "a[href]",
+      );
+      if (!anchor) return;
+      const url = new URL(anchor.href);
+      if (url.origin !== window.location.origin || url.pathname !== pathname)
+        return;
+      if (url.hash) {
+        event.preventDefault();
+        window.history.pushState(
+          null,
+          "",
+          url.pathname + url.search + url.hash,
+        );
+        revealHash();
+      } else if (url.pathname === "/") {
+        event.preventDefault();
+        window.history.pushState(null, "", "/");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    };
+    document.addEventListener("click", navigate);
+    window.addEventListener("hashchange", revealHash);
+    return () => {
+      document.removeEventListener("click", navigate);
+      window.removeEventListener("hashchange", revealHash);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    const openQuote = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ product: Product; quantity: number }>
+      ).detail;
+      setSelectedProduct(null);
+      setQuote(detail);
+    };
+    window.addEventListener("agrocenter:quote", openQuote);
+    return () => window.removeEventListener("agrocenter:quote", openQuote);
+  }, []);
+
+  useEffect(() => {
+    const sync = () =>
+      setCategory(
+        new URLSearchParams(window.location.search).get("categoria") || "Todas",
+      );
+    sync();
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, [pathname]);
+
+  useEffect(() => {
+    const panel = document.querySelector<HTMLElement>(
+      ".modal-backdrop section, .cart-drawer",
+    );
+    if (!panel) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const focusable = () =>
+      Array.from(
+        panel.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), a[href], input, select, textarea, [tabindex="0"]',
+        ),
+      );
+    focusable()[0]?.focus();
+    const handle = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedProduct(null);
+        setCartOpen(false);
+        setCheckoutOpen(false);
+        setAccountOpen(false);
+      }
+      if (event.key === "Tab") {
+        const items = focusable();
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    document.addEventListener("keydown", handle);
+    return () => {
+      document.removeEventListener("keydown", handle);
+      previous?.focus();
+    };
+  }, [selectedProduct, cartOpen, checkoutOpen, accountOpen, orderPlaced]);
+
   const visibleProducts = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    const filtered = catalog.filter((product) => {
+    const filtered = modeCatalog.filter((product) => {
       const matchesSearch =
         !normalized ||
-        `${product.name} ${product.category} ${product.description}`
+        `${product.name} ${product.sku} ${product.category} ${product.description}`
           .toLowerCase()
           .includes(normalized);
-      return matchesSearch && (category === "Todas" || product.category === category);
+      return (
+        matchesSearch && (category === "Todas" || product.category === category)
+      );
     });
     return [...filtered].sort((a, b) => {
+      if (a.price === null) return b.price === null ? 0 : 1;
+      if (b.price === null) return -1;
       if (sort === "price-low") return a.price - b.price;
       if (sort === "price-high") return b.price - a.price;
-      if (sort === "rating") return b.rating - a.rating;
-      return Number(Boolean(b.badge)) - Number(Boolean(a.badge));
+      return a.name.localeCompare(b.name, "es");
     });
-  }, [catalog, category, query, sort]);
+  }, [modeCatalog, category, query, sort]);
 
   const cartItems = useMemo(
     () =>
       catalog
-        .filter((product) => cart[product.id])
+        .filter((product) => cart[product.id] && !product.quoteOnly)
         .map((product) => ({ ...product, quantity: cart[product.id] })),
-    [catalog, cart]
+    [catalog, cart],
   );
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const subtotal = cartItems.reduce(
+    (sum, item) => sum + (item.price ?? 0) * item.quantity,
+    0,
+  );
 
-  function addToCart(product: Product, open = false) {
-    setCart((current) => ({ ...current, [product.id]: (current[product.id] ?? 0) + 1 }));
-    setToast(`${product.name} se agregó al carrito.`);
-    if (open) setCartOpen(true);
+  function addToCart(product: Product, quantity = 1) {
+    if (!canBuy(product, (cart[product.id] ?? 0) + quantity)) {
+      setToast(
+        "La cantidad supera el stock disponible o el producto requiere cotización.",
+      );
+      return;
+    }
+    setCart((current) => ({
+      ...current,
+      [product.id]: (current[product.id] ?? 0) + quantity,
+    }));
+    setToast(product.name + " se agregó al carrito.");
   }
 
   function changeQuantity(id: number, delta: number) {
@@ -239,6 +357,8 @@ export default function AgroCenterApp() {
         delete next[id];
         return next;
       }
+      const product = catalog.find((item) => item.id === id);
+      if (!product || !canBuy(product, nextQuantity)) return current;
       return { ...current, [id]: nextQuantity };
     });
   }
@@ -246,19 +366,39 @@ export default function AgroCenterApp() {
   function chooseCategory(nextCategory: string) {
     setCategory(nextCategory);
     setMobileOpen(false);
-    window.setTimeout(
-      () => document.querySelector("#productos")?.scrollIntoView({ behavior: "smooth" }),
-      0
-    );
+    const base = isWholesale ? "/productos/mayoristas" : "/productos";
+    const url =
+      nextCategory === "Todas"
+        ? base
+        : base + "?categoria=" + encodeURIComponent(nextCategory);
+    if (isCatalog) window.history.pushState(null, "", url);
+    else router.push(url);
   }
 
   async function submitCheckout(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (cartItems.some((item) => item.demo || item.id < 0)) {
+      setCheckoutOpen(false);
+      setToast("Prueba completada: no se creó una venta ni se descontó inventario.");
+      return;
+    }
+
     if (!session) {
       setCheckoutOpen(false);
-      setAuthError("Debes iniciar sesión con AgroCenter para completar la compra.");
+      setAuthError(
+        "Debes iniciar sesión con AgroCenter para completar la compra.",
+      );
       setAccountOpen(true);
+      return;
+    }
+
+    if (
+      isSubmittingOrder ||
+      cartItems.length === 0 ||
+      cartItems.some((item) => !canBuy(item, item.quantity))
+    ) {
+      setToast("Revisa el carrito y la disponibilidad antes de continuar.");
       return;
     }
 
@@ -283,183 +423,771 @@ export default function AgroCenterApp() {
       setOrderPlaced(true);
       setCart({});
     } catch (error: unknown) {
-      alert(error instanceof Error ? error.message : "No fue posible procesar la orden en el servidor.");
+      alert(
+        error instanceof Error
+          ? error.message
+          : "No fue posible procesar la orden en el servidor.",
+      );
     } finally {
       setIsSubmittingOrder(false);
     }
   }
 
   return (
-    <main className="storefront">
+    <div className="storefront corporate">
+      <a className="skip-link" href="#contenido">
+        Saltar al contenido
+      </a>
       <div className="promo-bar">
-        <p><Truck size={14} /> Despacho a todo Chile</p>
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          {isUserAdmin(session) && (
-            <Link
-              href="/admin"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                background: "rgba(220, 236, 183, 0.22)",
-                border: "1px solid rgba(220, 236, 183, 0.4)",
-                color: "#dcecb7",
-                padding: "2px 8px",
-                borderRadius: "5px",
-                fontSize: "11px",
-                fontWeight: 700,
-                textDecoration: "none",
-              }}
-            >
-              <ShieldCheck size={12} />
-              <span>Modo Admin</span>
-            </Link>
-          )}
-          <p>Compra segura · Atención experta</p>
-        </div>
+        <p>
+          <Sprout size={14} /> Conectados con el campo
+        </p>
       </div>
-
       <header className="store-header">
         <div className="header-main shell">
-          <button className="mobile-trigger" type="button" onClick={() => setMobileOpen(true)} aria-label="Abrir categorías"><Menu /></button>
-          <a className="store-logo" href="#inicio" aria-label="AgroCenter inicio">
-            <span><Leaf size={25} /></span>
-            <strong>AgroCenter<small>Todo para tu campo</small></strong>
-          </a>
-          <label className="main-search">
-            <Search size={20} />
-            <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="¿Qué necesitas para tu campo?" />
-            <a href="#productos">Buscar</a>
-          </label>
-          <button className="header-action location-action" type="button" onClick={() => setLocationOpen(true)}><MapPin /><span>Entregar en<small>{region}</small></span><ChevronDown size={15} /></button>
-          <button className="header-action" type="button" onClick={() => setAccountOpen(true)}><CircleUserRound /><span>{session ? `Hola, ${session.name.split(" ")[0]}` : "Hola, ingresa"}<small>Mi cuenta</small></span></button>
-          {isUserAdmin(session) && (
-            <Link
-              href="/admin"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "5px",
-                padding: "6px 12px",
-                background: "var(--green-100)",
-                color: "var(--green-900)",
-                border: "1px solid #c7decb",
-                borderRadius: "8px",
-                fontSize: "12px",
-                fontWeight: 700,
-                textDecoration: "none",
-              }}
-              title="Panel de Administración"
+          <Link className="store-logo" href="/" aria-label="Agrocenter inicio">
+            <span>
+              <Leaf size={25} />
+            </span>
+            <strong>
+              Agrocenter<small>Crecer desde la tierra</small>
+            </strong>
+          </Link>
+          <nav
+            id="principal"
+            className={mobileOpen ? "corporate-nav open" : "corporate-nav"}
+            aria-label="Navegación principal"
+          >
+            {[
+              { label: "Inicio", href: "/" },
+              { label: "Nosotros", href: "/#nosotros" },
+              { label: "Productos", href: "/productos" },
+              { label: "Soluciones agrícolas", href: "/productos" },
+              { label: "Mayoristas", href: "/productos/mayoristas" },
+              { label: "Contacto", href: "/#contacto" },
+            ].map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                aria-current={pathname === item.href ? "page" : undefined}
+                onClick={() => setMobileOpen(false)}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+          <div className="header-controls">
+            <button
+              className="account-control"
+              type="button"
+              onClick={() => setAccountOpen(true)}
+              aria-label="Mi cuenta"
             >
-              <ShieldCheck size={15} color="var(--green-800)" />
-              <span>Admin</span>
-            </Link>
-          )}
-          <button className="cart-button" type="button" onClick={() => setCartOpen(true)} aria-label={`Carrito con ${cartCount} productos`}><ShoppingCart /><span>{cartCount}</span></button>
-        </div>
-
-        <nav className={`category-nav ${mobileOpen ? "open" : ""}`} aria-label="Categorías principales">
-          <div className="mobile-nav-head"><strong>Categorías</strong><button type="button" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú"><X /></button></div>
-          <div className="shell nav-inner">
-            <button className="all-categories" type="button" onClick={() => chooseCategory("Todas")}><Menu size={17} /> Todas las categorías <ChevronDown size={14} /></button>
-            <a href="#ofertas">Ofertas</a>
-            <a href="#temporada">Temporada de siembra</a>
-            <button type="button" onClick={() => chooseCategory("Fertilizantes")}>Insumos agrícolas</button>
-            <button type="button" onClick={() => chooseCategory("Maquinaria")}>Maquinaria</button>
-            <a href="#ayuda">Asesoría técnica</a>
-            <a className="seller-link" href="#vender">Vende en AgroCenter</a>
+              <CircleUserRound size={21} />
+              <span>{session ? session.name.split(" ")[0] : "Mi cuenta"}</span>
+            </button>
+            {isUserAdmin(session) && (
+              <Link href="/admin" className="admin-link">
+                Admin
+              </Link>
+            )}
+            <button
+              className="cart-button"
+              type="button"
+              onClick={() => setCartOpen(true)}
+              aria-label={"Carrito con " + cartCount + " productos"}
+            >
+              <ShoppingCart size={20} />
+              <span>{cartCount}</span>
+            </button>
+            <button
+              className="menu-toggle"
+              type="button"
+              aria-controls="principal"
+              aria-expanded={mobileOpen}
+              aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+              onClick={() => setMobileOpen(!mobileOpen)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") setMobileOpen(false);
+              }}
+            >
+              {mobileOpen ? <X /> : <Menu />}
+            </button>
           </div>
-        </nav>
-        {mobileOpen && <button className="nav-overlay" type="button" onClick={() => setMobileOpen(false)} aria-label="Cerrar menú" />}
+        </div>
       </header>
-
-      <section className="hero shell" id="inicio">
-        <div className="hero-copy">
-          <span className="hero-kicker"><Tag size={14} /> Especial de temporada</span>
-          <h1>Prepara hoy una cosecha más productiva.</h1>
-          <p>Insumos, herramientas y soluciones agrícolas seleccionadas por expertos, con despacho directo a tu campo.</p>
-          <div className="hero-actions"><a className="primary-cta" href="#productos">Ver ofertas</a><a className="secondary-cta" href="#categorias">Explorar categorías</a></div>
-          <div className="hero-trust"><PackageCheck size={18} /><span><b>Compra protegida</b><small>Soporte antes y después de tu compra</small></span></div>
-        </div>
-        <div className="hero-offer"><span>Hasta</span><strong>25%</strong><b>de descuento</b><p>en productos seleccionados</p></div>
-      </section>
-
-      <section className="value-strip shell" aria-label="Beneficios de compra">
-        <div><Truck /><span><b>Despacho nacional</b><small>Cobertura de Arica a Chiloé</small></span></div>
-        <div><CreditCard /><span><b>Pago flexible</b><small>Débito, crédito y transferencia</small></span></div>
-        <div><Headphones /><span><b>Asesoría agrícola</b><small>Expertos antes de comprar</small></span></div>
-        <div><RotateCcw /><span><b>Compra protegida</b><small>Resolvemos cualquier problema</small></span></div>
-      </section>
-
-      <section className="section shell" id="categorias">
-        <div className="section-heading"><div><span className="eyebrow">Encuentra más rápido</span><h2>Compra por categoría</h2></div><button type="button" onClick={() => chooseCategory("Todas")}>Ver todas <ArrowRight size={15} /></button></div>
-        <div className="category-grid">
-          {categoryOptions.map(({ name, icon: Icon, copy }) => <button type="button" className={`category-card ${category === name ? "active" : ""}`} onClick={() => chooseCategory(name)} key={name}><span><Icon /></span><b>{name}</b><small>{copy}</small><ArrowRight size={15} /></button>)}
-        </div>
-      </section>
-
-      <section className="campaign-grid shell" id="ofertas">
-        <article className="campaign-card campaign-dark"><span>Compra inteligente</span><h2>Precios por volumen para tu operación.</h2><p>Cotiza cantidades mayores y recibe atención comercial personalizada.</p><a href="#ayuda">Solicitar cotización <ArrowRight size={16} /></a></article>
-        <article className="campaign-card campaign-light"><span>Riego eficiente</span><h2>Aprovecha mejor cada gota.</h2><p>Encuentra cintas, mangueras y conexiones para tu próxima instalación.</p><button type="button" onClick={() => chooseCategory("Riego")}>Ver soluciones <ArrowRight size={16} /></button></article>
-      </section>
-
-      <section className="section products-section shell" id="productos">
-        <div className="section-heading"><div><span className="eyebrow">Precios especiales online</span><h2>{category === "Todas" ? "Ofertas para tu campo" : category}</h2></div><p>{visibleProducts.length} productos</p></div>
-        <div className="catalog-toolbar">
-          <div className="filter-chips">
-            {["Todas", ...categoryOptions.map((item) => item.name)].map((item) => <button type="button" className={category === item ? "active" : ""} onClick={() => setCategory(item)} key={item}>{item}</button>)}
-          </div>
-          <label>Ordenar por<select value={sort} onChange={(event) => setSort(event.target.value)}><option value="featured">Destacados</option><option value="price-low">Menor precio</option><option value="price-high">Mayor precio</option><option value="rating">Mejor evaluados</option></select></label>
-        </div>
-        <div className="product-grid">
-          {visibleProducts.map((product) => (
-            <article className="product-card" key={product.id}>
-              <div className="product-image" onClick={() => setSelectedProduct(product)}><img src={product.image} alt={product.name} />{product.badge && <span>{product.badge}</span>}<button type="button" className={wishlist.includes(product.id) ? "saved" : ""} onClick={(event) => { event.stopPropagation(); setWishlist((current) => current.includes(product.id) ? current.filter((id) => id !== product.id) : [...current, product.id]); }} aria-label={`Guardar ${product.name}`}><Heart size={18} fill={wishlist.includes(product.id) ? "currentColor" : "none"} /></button></div>
-              <div className="product-info"><p>{product.category}</p><button className="product-title" type="button" onClick={() => setSelectedProduct(product)}><h3>{product.name}</h3></button><div className="rating"><span>★</span> {product.rating} <small>· {product.stock} disponibles</small></div><small>{product.unit}</small><div className="product-price">{product.oldPrice && <del>{money.format(product.oldPrice)}</del>}<strong>{money.format(product.price)}</strong><em>Precio con IVA</em></div><button className="add-button" type="button" onClick={() => addToCart(product)}><ShoppingCart size={17} /> Agregar al carrito</button></div>
-            </article>
-          ))}
-        </div>
-        {isLoadingCatalog && visibleProducts.length === 0 && (
-          <div className="empty-products">
-            <h3>Cargando catálogo oficial...</h3>
-            <p>Conectando con el inventario de AgroCenter en tiempo real.</p>
-          </div>
+      <main id="contenido">
+        {!isCatalog && (
+          <>
+            <section className="corporate-hero" id="inicio">
+              <div className="shell hero-layout">
+                <div className="corporate-hero-copy">
+                  <span className="hero-kicker">
+                    <Sprout size={15} /> Una mirada hacia el campo
+                  </span>
+                  <h1>
+                    La tierra nos une.
+                    <br />
+                    <em>El futuro nos mueve.</em>
+                  </h1>
+                  <p>
+                    Conoce Agrocenter: una plataforma agrícola pensada para
+                    conectar las necesidades de tu campo con nuevas
+                    posibilidades.
+                  </p>
+                  <div className="hero-actions">
+                    <Link className="solid-cta" href="/productos">
+                      Conoce nuestros productos <ArrowRight size={17} />
+                    </Link>
+                    <a className="outline-cta" href="#contacto">
+                      Contáctanos ↗
+                    </a>
+                  </div>
+                  <div className="hero-caption">
+                    <span>AGROCENTER</span>
+                    <span>Personas, productos y campo.</span>
+                  </div>
+                </div>
+                <div
+                  className="hero-photograph"
+                  role="img"
+                  aria-label="Espigas de trigo en un campo"
+                >
+                  <span>Todo empieza en la tierra.</span>
+                </div>
+              </div>
+            </section>
+            <section id="nosotros" className="section shell about-section">
+              <div>
+                <span className="eyebrow">Nosotros</span>
+                <h2>
+                  Una visión compartida.
+                  <br />
+                  Un campo de posibilidades.
+                </h2>
+              </div>
+              <div>
+                <span className="editorial-note">
+                  Presentación provisional · Proyecto universitario
+                </span>
+                <p>{company.about}</p>
+                <p>{company.purpose}</p>
+                <a className="text-link" href="#soluciones">
+                  Conoce nuestra propuesta <ArrowRight size={17} />
+                </a>
+              </div>
+            </section>
+          </>
         )}
-        {!isLoadingCatalog && visibleProducts.length === 0 && (
-          <div className="empty-products"><Search /><h3>No encontramos coincidencias</h3><p>Prueba con “semillas”, “riego” o “fertilizante”.</p><button type="button" onClick={() => { setQuery(""); setCategory("Todas"); }}>Limpiar búsqueda</button></div>
+        <section
+          className="section products-section shell"
+          id="productos"
+          aria-busy={isLoadingCatalog}
+        >
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">
+                {isCatalog
+                  ? isWholesale
+                    ? "Productos / Mayoristas"
+                    : "Productos"
+                  : "Una selección del catálogo"}
+              </span>
+              {isCatalog ? (
+                <h1>
+                  {isWholesale
+                    ? "Mayoristas y maquinaria"
+                    : "Productos para tu campo"}
+                </h1>
+              ) : (
+                <h2>Descubre nuestro catálogo</h2>
+              )}
+            </div>
+            {!isCatalog && (
+              <Link className="solid-cta" href="/productos">
+                Ver catálogo completo <ArrowRight size={17} />
+              </Link>
+            )}
+          </div>
+          {isCatalog && (
+            <>
+              <nav
+                className="catalog-modes"
+                aria-label="Modalidad de productos"
+              >
+                <Link
+                  href="/productos"
+                  aria-current={!isWholesale ? "page" : undefined}
+                >
+                  Productos
+                </Link>
+                <Link
+                  href="/productos/mayoristas"
+                  aria-current={isWholesale ? "page" : undefined}
+                >
+                  Mayoristas y maquinaria
+                </Link>
+              </nav>
+              <p className="catalog-intro">
+                {isWholesale
+                  ? "Selecciona un producto para solicitar una cotización y contactar con Agrocenter."
+                  : "Explora por categoría y agrega los productos disponibles a tu carrito."}
+              </p>
+              <nav
+                className="filter-chips category-secondary"
+                aria-label="Categorías de productos"
+              >
+                {["Todas", ...categoryOptions].map((item) => (
+                  <button
+                    type="button"
+                    className={category === item ? "active" : ""}
+                    aria-pressed={category === item}
+                    onClick={() => chooseCategory(item)}
+                    key={item}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </nav>
+              <div className="catalog-toolbar">
+                <label className="catalog-search">
+                  <Search size={19} />
+                  <input
+                    aria-label="Buscar por nombre, SKU o descripción"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Buscar productos o SKU…"
+                  />
+                </label>
+                <p role="status">{visibleProducts.length} productos</p>
+                <label>
+                  Ordenar
+                  <select
+                    value={sort}
+                    onChange={(event) => setSort(event.target.value)}
+                  >
+                    <option value="featured">Nombre A–Z</option>
+                    <option value="price-low">Menor precio</option>
+                    <option value="price-high">Mayor precio</option>
+                  </select>
+                </label>
+              </div>
+            </>
+          )}
+          {catalog.some((product) => product.demo) && (
+            <div className="demo-catalog-notice" role="status">
+              <strong>Catálogo de demostración</strong>
+              <p>El catálogo real no responde. Estos productos, precios y cantidades son ficticios. Puedes probar el carrito y las cotizaciones sin crear compras.</p>
+              <Link className="text-link" href="/productos/mayoristas">Probar mayoristas y maquinaria →</Link>
+            </div>
+          )}
+          <div className="product-grid">
+            {(isCatalog ? visibleProducts : catalog.slice(0, 4)).map(
+              (product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  saved={wishlist.includes(product.id)}
+                  onSave={() =>
+                    setWishlist((current) =>
+                      current.includes(product.id)
+                        ? current.filter((id) => id !== product.id)
+                        : [...current, product.id],
+                    )
+                  }
+                  onSelect={() =>
+                    product.quoteOnly
+                      ? setQuote({ product, quantity: 1 })
+                      : setSelectedProduct(product)
+                  }
+                  onAdd={(quantity) => addToCart(product, quantity)}
+                />
+              ),
+            )}
+          </div>
+          {isLoadingCatalog && (
+            <div className="empty-products" role="status">
+              Cargando catálogo…
+            </div>
+          )}
+          {catalogError && !catalog.some((product) => product.demo) && (
+            <div className="empty-products" role="alert">
+              <h3>No pudimos actualizar el catálogo</h3>
+              <p>{catalogError}</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLoadingCatalog(true);
+                  setReload((value) => value + 1);
+                }}
+              >
+                Reintentar
+              </button>
+            </div>
+          )}
+          {catalogError && catalog.some((product) => product.demo) && (
+            <button className="outline-cta" type="button" onClick={() => { setIsLoadingCatalog(true); setReload((value) => value + 1); }}>Reintentar catálogo real</button>
+          )}
+          {!isLoadingCatalog &&
+            !catalogError &&
+            (isCatalog ? visibleProducts : catalog).length === 0 && (
+              <div className="empty-products">
+                <Search />
+                <h3>
+                  {modeCatalog.length
+                    ? "No encontramos coincidencias"
+                    : "Aún no hay productos publicados"}
+                </h3>
+                <p>
+                  {modeCatalog.length
+                    ? "Prueba otra búsqueda o categoría."
+                    : "Vuelve a consultar el catálogo más adelante."}
+                </p>
+                {modeCatalog.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery("");
+                      chooseCategory("Todas");
+                    }}
+                  >
+                    Limpiar filtros
+                  </button>
+                )}
+              </div>
+            )}
+        </section>
+        {!isCatalog && (
+            <section id="soluciones" className="section shell">
+              <div className="section-heading">
+                <div>
+                  <span className="eyebrow">Soluciones agrícolas</span>
+                  <h2>Cada proyecto, una forma de avanzar.</h2>
+                </div>
+              </div>
+              <div className="solutions-access">
+                <Image className="solutions-landscape" src="/tractor-campo.jpg" alt="Tractor trabajando la tierra en un campo agrícola" width={1920} height={1280} sizes="(max-width: 600px) 100vw, (max-width: 1280px) 90vw, 1170px" />
+                <p>
+                  Encuentra los productos que necesitas para tu campo. Para
+                  pedidos por mayor y maquinaria, selecciona un producto y
+                  conversemos sobre tu cotización.
+                </p>
+                <div className="contact-actions">
+                  <Link className="solid-cta" href="/productos">
+                    Ver productos <ArrowRight size={17} />
+                  </Link>
+                  <Link className="outline-cta" href="/productos/mayoristas">
+                    Ver mayoristas y maquinaria <ArrowRight size={17} />
+                  </Link>
+                </div>
+              </div>
+            </section>
         )}
-      </section>
-
-      <section className="season-banner shell" id="temporada">
-        <div><span className="eyebrow">Planifica la campaña</span><h2>Temporada de siembra</h2><p>Reúne semillas, nutrición, riego y herramientas en una sola compra. Te ayudamos a elegir según cultivo, superficie y ubicación.</p><a href="#ayuda">Hablar con un especialista <ArrowRight size={16} /></a></div>
-        <div className="season-steps"><span><b>1</b>Cuéntanos tu cultivo</span><span><b>2</b>Recibe una recomendación</span><span><b>3</b>Despachamos a tu campo</span></div>
-      </section>
-
-      <section className="section brands shell"><span className="eyebrow">Marcas seleccionadas</span><h2>Calidad que trabaja contigo</h2><div><b>BioCampo</b><b>AquaRiego</b><b>TerraNorte</b><b>AgriPro</b><b>CampoSur</b></div></section>
-
-      <section className="help-section" id="ayuda"><div className="shell help-inner"><div><span className="eyebrow">¿No sabes cuál elegir?</span><h2>Conversemos sobre tu campo.</h2><p>Nuestro equipo te orienta para encontrar una solución adecuada a tu cultivo, escala y presupuesto.</p></div><a href="mailto:ventas@agrocenter.cl"><Headphones size={19} /> Pedir asesoría</a></div></section>
-
+        <Contact />
+      </main>
       <footer className="store-footer">
         <div className="shell footer-grid">
-          <div><a className="store-logo footer-logo" href="#inicio"><span><Leaf size={25} /></span><strong>AgroCenter<small>Todo para tu campo</small></strong></a><p>Una forma simple y confiable de comprar soluciones agrícolas en Chile.</p></div>
-          <div><h3>Comprar</h3><a href="#categorias">Categorías</a><a href="#productos">Ofertas</a><a href="#temporada">Temporada</a></div>
-          <div><h3>Ayuda</h3><a href="#ayuda">Asesoría técnica</a><button type="button" onClick={() => setLocationOpen(true)}>Despachos</button><button type="button" onClick={() => setAccountOpen(true)}>Mi cuenta</button></div>
-          <div id="vender"><h3>Empresas</h3><a href="mailto:ventas@agrocenter.cl">Ventas por volumen</a><a href="mailto:proveedores@agrocenter.cl">Vender en AgroCenter</a><a href="mailto:contacto@agrocenter.cl">Contacto</a></div>
+          <div>
+            <Link className="store-logo footer-logo" href="/">
+              <span>
+                <Leaf size={25} />
+              </span>
+              <strong>
+                Agrocenter<small>Crecer desde la tierra</small>
+              </strong>
+            </Link>
+            <p>
+              Personas, productos y campo.
+              <br />
+              Una propuesta para seguir creciendo.
+            </p>
+          </div>
+          <div>
+            <h3>Explora</h3>
+            <Link href="/">Inicio</Link>
+            <Link href="/#nosotros">Nosotros</Link>
+            <Link href="/productos">Productos</Link>
+          </div>
+          <div>
+            <h3>Conversemos</h3>
+            <Link href="/productos">Soluciones agrícolas</Link>
+            <Link href="/productos/mayoristas">Mayoristas y maquinaria</Link>
+            <a href="#contacto">Contacto y cotizaciones</a>
+            <button type="button" onClick={() => setAccountOpen(true)}>
+              Mi cuenta
+            </button>
+          </div>
+          <div>
+            <h3>Contacto</h3>
+            {company.email ? (
+              <a href={"mailto:" + company.email}>{company.email}</a>
+            ) : (
+              <p>Canales comerciales por confirmar.</p>
+            )}
+            {company.phone && <p>{company.phone}</p>}
+            {company.address && <p>{company.address}</p>}
+          </div>
         </div>
-        <div className="shell footer-bottom"><p>© 2026 AgroCenter. MVP demostrativo.</p><div><span>Compra segura</span><span>Datos protegidos</span></div></div>
+        <div className="shell footer-bottom">
+          <p>
+            © {new Date().getFullYear()} Agrocenter · Proyecto universitario
+          </p>
+          <span>Contenido institucional provisional</span>
+        </div>
       </footer>
 
-      {cartOpen && <><button className="drawer-overlay" type="button" onClick={() => setCartOpen(false)} aria-label="Cerrar carrito" /><aside className="cart-drawer" aria-label="Carrito de compras"><div className="drawer-head"><div><span>Tu compra</span><h2>Carrito ({cartCount})</h2></div><button type="button" onClick={() => setCartOpen(false)} aria-label="Cerrar carrito"><X /></button></div>{cartItems.length ? <><div className="cart-items">{cartItems.map((item) => <article className="cart-item" key={item.id}><img src={item.image} alt="" /><div><b>{item.name}</b><small>{item.unit}</small><div className="quantity-control"><button type="button" onClick={() => changeQuantity(item.id, -1)} aria-label="Quitar una unidad"><Minus size={14} /></button><span>{item.quantity}</span><button type="button" onClick={() => changeQuantity(item.id, 1)} aria-label="Agregar una unidad"><Plus size={14} /></button></div></div><strong>{money.format(item.price * item.quantity)}</strong></article>)}</div><div className="cart-summary"><p><span>Subtotal</span><b>{money.format(subtotal)}</b></p><p><span>Despacho</span><small>Se calcula según comuna</small></p><button type="button" onClick={() => { setCartOpen(false); setOrderPlaced(false); setCheckoutOpen(true); }}>Continuar compra <ArrowRight size={16} /></button><span><ShieldCheck size={15} /> Compra protegida por AgroCenter</span></div></> : <div className="empty-cart"><ShoppingCart /><h3>Tu carrito está vacío</h3><p>Explora el catálogo y agrega lo que necesita tu campo.</p><button type="button" onClick={() => setCartOpen(false)}>Ver productos</button></div>}</aside></>}
+      {quote && (
+        <QuoteDialog
+          key={quote.product.sku}
+          product={quote.product}
+          initialQuantity={quote.quantity}
+          onClose={closeQuote}
+        />
+      )}
+      {cartOpen && (
+        <>
+          <button
+            className="drawer-overlay"
+            type="button"
+            onClick={() => setCartOpen(false)}
+            aria-label="Cerrar carrito"
+          />
+          <aside
+            className="cart-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Carrito de compras"
+          >
+            <div className="drawer-head">
+              <div>
+                <span>Tu compra</span>
+                <h2>Carrito ({cartCount})</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCartOpen(false)}
+                aria-label="Cerrar carrito"
+              >
+                <X />
+              </button>
+            </div>
+            {cartItems.length ? (
+              <>
+                <div className="cart-items">
+                  {cartItems.map((item) => (
+                    <article className="cart-item" key={item.id}>
+                      <Image
+                        src={item.image}
+                        alt=""
+                        width={64}
+                        height={64}
+                        unoptimized
+                      />
+                      <div>
+                        <b>{item.name}</b>
+                        <small>{item.unit}</small>
+                        <div className="quantity-control">
+                          <button
+                            type="button"
+                            onClick={() => changeQuantity(item.id, -1)}
+                            aria-label="Quitar una unidad"
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <span>{item.quantity}</span>
+                          <button
+                            type="button"
+                            onClick={() => changeQuantity(item.id, 1)}
+                            aria-label="Agregar una unidad"
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <strong>
+                        {money.format((item.price ?? 0) * item.quantity)}
+                      </strong>
+                    </article>
+                  ))}
+                </div>
+                <div className="cart-summary">
+                  <p>
+                    <span>Subtotal</span>
+                    <b>{money.format(subtotal)}</b>
+                  </p>
+                  <p>
+                    <span>Despacho</span>
+                    <small>Coordinación pendiente</small>
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCartOpen(false);
+                      if (cartItems.some((item) => item.demo || item.id < 0)) {
+                        setToast("Prueba completada: no se creó una venta ni se descontó inventario.");
+                        return;
+                      }
+                      setOrderPlaced(false);
+                      setCheckoutOpen(true);
+                    }}
+                  >
+                    {cartItems.some((item) => item.demo) ? "Simular compra" : "Continuar compra"} <ArrowRight size={16} />
+                  </button>
+                  <span>
+                    <ShieldCheck size={15} /> Revisa tus productos antes de
+                    confirmar
+                  </span>
+                </div>
+              </>
+            ) : (
+              <div className="empty-cart">
+                <ShoppingCart />
+                <h3>Tu carrito está vacío</h3>
+                <p>Explora el catálogo y agrega lo que necesita tu campo.</p>
+                <button type="button" onClick={() => setCartOpen(false)}>
+                  Ver productos
+                </button>
+              </div>
+            )}
+          </aside>
+        </>
+      )}
 
-      {selectedProduct && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setSelectedProduct(null)}><section className="product-modal"><button className="modal-close" type="button" onClick={() => setSelectedProduct(null)} aria-label="Cerrar detalle"><X /></button><div className="modal-product-image"><img src={selectedProduct.image} alt={selectedProduct.name} />{selectedProduct.badge && <span>{selectedProduct.badge}</span>}</div><div className="modal-product-copy"><span className="eyebrow">{selectedProduct.category}</span><h2>{selectedProduct.name}</h2><div className="rating"><span>★</span> {selectedProduct.rating} · {selectedProduct.stock} disponibles</div><p>{selectedProduct.description}</p><ul><li><Check size={15} /> Despacho disponible a regiones</li><li><Check size={15} /> Soporte técnico para tu compra</li><li><Check size={15} /> Garantía de satisfacción</li></ul><div className="modal-price">{selectedProduct.oldPrice && <del>{money.format(selectedProduct.oldPrice)}</del>}<strong>{money.format(selectedProduct.price)}</strong><small>{selectedProduct.unit} · IVA incluido</small></div><button className="primary-modal-action" type="button" onClick={() => { addToCart(selectedProduct, true); setSelectedProduct(null); }}><ShoppingCart size={18} /> Agregar y ver carrito</button></div></section></div>}
+      {selectedProduct && (
+        <div className="modal-backdrop">
+          <section
+            className="product-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={selectedProduct.name}
+          >
+            <button
+              className="modal-close"
+              type="button"
+              onClick={() => setSelectedProduct(null)}
+              aria-label="Cerrar detalle"
+            >
+              <X />
+            </button>
+            <div className="modal-product-image">
+              <Image
+                src={selectedProduct.image}
+                alt={selectedProduct.name}
+                width={600}
+                height={500}
+                unoptimized
+              />
+            </div>
+            <div className="modal-product-copy">
+              <span className="eyebrow">{selectedProduct.category}</span>
+              <h2>{selectedProduct.name}</h2>
+              <p>
+                {selectedProduct.description ||
+                  "Descripción pendiente de publicación."}
+              </p>
+              <p>
+                SKU {selectedProduct.sku} · {selectedProduct.unit}
+              </p>
+              <p>
+                {selectedProduct.quoteOnly
+                  ? "Venta por cotización"
+                  : selectedProduct.stock + " unidades disponibles"}
+              </p>
+              <div className="modal-price">
+                <strong>
+                  {selectedProduct.quoteOnly
+                    ? "Precio a cotizar"
+                    : selectedProduct.price === null
+                      ? "Precio no disponible"
+                      : money.format(selectedProduct.price)}
+                </strong>
+              </div>
+              <ProductAction
+                key={selectedProduct.id}
+                product={selectedProduct}
+                onQuote={() => setSelectedProduct(null)}
+                onAdd={(quantity) => addToCart(selectedProduct, quantity)}
+              />
+              {selectedProduct.quoteOnly && (
+                <button
+                  className="text-link"
+                  type="button"
+                  onClick={() => {
+                    setSelectedProduct(null);
+                    document.querySelector("#contacto")?.scrollIntoView();
+                  }}
+                >
+                  Ir a contacto
+                </button>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
-      {checkoutOpen && <div className="modal-backdrop"><section className="checkout-modal"><button className="modal-close" type="button" onClick={() => { setCheckoutOpen(false); setOrderPlaced(false); }} aria-label="Cerrar checkout"><X /></button>{orderPlaced ? <div className="success-state"><span><Check /></span><p>Solicitud recibida</p><h2>¡Gracias por comprar en AgroCenter!</h2><p>Tu orden ha sido registrada en el sistema de ventas con éxito.</p><button type="button" onClick={() => { setCheckoutOpen(false); setOrderPlaced(false); }}>Volver a la tienda</button></div> : <><div className="checkout-head"><span>Último paso</span><h2>Datos de entrega</h2><p>Completa tus datos para confirmar el pedido a través de nuestros servicios.</p></div><form onSubmit={submitCheckout}><div className="form-grid"><label>Nombre y apellido<input required placeholder="Ej. Daniela Soto" /></label><label>Correo<input required type="email" placeholder="nombre@empresa.cl" /></label><label>Teléfono<input required type="tel" placeholder="+56 9 1234 5678" /></label><label>Región<select value={region} onChange={(event) => setRegion(event.target.value)}>{regions.map((item) => <option key={item}>{item}</option>)}</select></label><label className="full-field">Dirección o referencia de entrega<input required placeholder="Camino, parcela, comuna" /></label></div><div className="payment-demo"><CreditCard /><div><b>Pago en la siguiente etapa</b><p>La orden se registrará directamente en ms-ventas.</p></div></div><div className="checkout-total"><span>Total productos</span><strong>{money.format(subtotal)}</strong></div><button className="primary-modal-action" type="submit" disabled={isSubmittingOrder}><BadgeCheck size={18} /> {isSubmittingOrder ? "Procesando orden..." : "Confirmar solicitud"}</button></form></>}</section></div>}
+      {checkoutOpen && (
+        <div className="modal-backdrop">
+          <section
+            className="checkout-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Confirmación de compra"
+          >
+            <button
+              className="modal-close"
+              type="button"
+              onClick={() => {
+                setCheckoutOpen(false);
+                setOrderPlaced(false);
+              }}
+              aria-label="Cerrar checkout"
+            >
+              <X />
+            </button>
+            {orderPlaced ? (
+              <div className="success-state">
+                <span>
+                  <Check />
+                </span>
+                <p>Solicitud recibida</p>
+                <h2>¡Gracias por comprar en AgroCenter!</h2>
+                <p>
+                  Tu orden ha sido registrada en el sistema de ventas con éxito.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCheckoutOpen(false);
+                    setOrderPlaced(false);
+                  }}
+                >
+                  Volver a la tienda
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="checkout-head">
+                  <span>Último paso</span>
+                  <h2>Confirmar solicitud</h2>
+                  <p>
+                    Revisa tus productos antes de confirmar. La coordinación de
+                    entrega y pago queda pendiente.
+                  </p>
+                </div>
+                <form onSubmit={submitCheckout}>
+                  <div className="payment-demo">
+                    <CreditCard />
+                    <div>
+                      <b>Pago en la siguiente etapa</b>
+                      <p>
+                        Se registrará tu solicitud de compra. No se realiza un
+                        cobro en línea.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="checkout-total">
+                    <span>Total productos</span>
+                    <strong>{money.format(subtotal)}</strong>
+                  </div>
+                  <button
+                    className="primary-modal-action"
+                    type="submit"
+                    disabled={isSubmittingOrder}
+                  >
+                    <BadgeCheck size={18} />{" "}
+                    {isSubmittingOrder
+                      ? "Procesando orden..."
+                      : "Confirmar solicitud"}
+                  </button>
+                </form>
+              </>
+            )}
+          </section>
+        </div>
+      )}
 
-      {accountOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setAccountOpen(false)}><section className="small-modal"><button className="modal-close" type="button" onClick={() => setAccountOpen(false)} aria-label="Cerrar cuenta"><X /></button><span className="modal-symbol"><CircleUserRound /></span>{session ? <><p>Mi cuenta</p><h2>Hola, {session.name}</h2><small>{session.demo ? "Sesión de demostración" : session.role}</small><button className="primary-modal-action" type="button" onClick={() => { signOut(); setSession(null); setAccountOpen(false); }}>Cerrar sesión</button></> : <><p>Clientes AgroCenter</p><h2>Ingresa a tu cuenta</h2><small>Revisa compras, guarda productos y agiliza tus próximos pedidos.</small>{authError && <div className="form-error">{authError}</div>}<button className="primary-modal-action" type="button" onClick={() => { setAuthError(""); if (cognitoIsConfigured()) beginCognitoSignIn().catch((error: unknown) => setAuthError(error instanceof Error ? error.message : "No fue posible conectar.")); else setSession(createDemoSession()); }}>{cognitoIsConfigured() ? "Ingresar con AgroCenter" : "Entrar en modo demo"}</button></>}</section></div>}
+      {accountOpen && (
+        <div className="modal-backdrop">
+          <section
+            className="small-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mi cuenta"
+          >
+            <button
+              className="modal-close"
+              type="button"
+              onClick={() => setAccountOpen(false)}
+              aria-label="Cerrar cuenta"
+            >
+              <X />
+            </button>
+            <span className="modal-symbol">
+              <CircleUserRound />
+            </span>
+            {session ? (
+              <>
+                <p>Mi cuenta</p>
+                <h2>Hola, {session.name}</h2>
+                <small>
+                  {session.demo ? "Sesión de demostración" : session.role}
+                </small>
+                <button
+                  className="primary-modal-action"
+                  type="button"
+                  onClick={() => {
+                    signOut();
+                    setSession(null);
+                    setAccountOpen(false);
+                  }}
+                >
+                  Cerrar sesión
+                </button>
+              </>
+            ) : (
+              <>
+                <p>Clientes AgroCenter</p>
+                <h2>Ingresa a tu cuenta</h2>
+                <small>
+                  Revisa compras, guarda productos y agiliza tus próximos
+                  pedidos.
+                </small>
+                {authError && <div className="form-error">{authError}</div>}
+                <button
+                  className="primary-modal-action"
+                  type="button"
+                  disabled={!cognitoIsConfigured() && process.env.NODE_ENV !== "development"}
+                  onClick={() => {
+                    setAuthError("");
+                    if (cognitoIsConfigured())
+                      beginCognitoSignIn().catch((error: unknown) =>
+                        setAuthError(
+                          error instanceof Error
+                            ? error.message
+                            : "No fue posible conectar.",
+                        ),
+                      );
+                    else setSession(createDemoSession());
+                  }}
+                >
+                  {cognitoIsConfigured()
+                    ? "Ingresar con AgroCenter"
+                    : process.env.NODE_ENV === "development"
+                      ? "Entrar en modo demo"
+                      : "Inicio de sesión no configurado"}
+                </button>
+              </>
+            )}
+          </section>
+        </div>
+      )}
 
-      {locationOpen && <div className="modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setLocationOpen(false)}><section className="small-modal"><button className="modal-close" type="button" onClick={() => setLocationOpen(false)} aria-label="Cerrar ubicación"><X /></button><span className="modal-symbol"><MapPin /></span><p>Zona de entrega</p><h2>¿Dónde está tu campo?</h2><small>Usamos tu región para orientar cobertura y despacho.</small><label className="region-select">Región<select value={region} onChange={(event) => setRegion(event.target.value)}>{regions.map((item) => <option key={item}>{item}</option>)}</select></label><button className="primary-modal-action" type="button" onClick={() => setLocationOpen(false)}>Guardar ubicación</button></section></div>}
-
-      {toast && <div className="toast" role="status"><Check size={17} /> {toast}</div>}
-    </main>
+      {toast && (
+        <div className="toast" role="status">
+          <Check size={17} /> {toast}
+        </div>
+      )}
+    </div>
   );
 }
+
