@@ -68,6 +68,9 @@ export function readAuthSession(): AuthSession | null {
 }
 
 export function createDemoSession(): AuthSession {
+  if (process.env.NODE_ENV !== "development") {
+    throw new Error("El modo demo no está disponible en producción.");
+  }
   const session: AuthSession = {
     accessToken: "demo-access-token",
     name: "Camila Muñoz",
@@ -84,7 +87,7 @@ export function createDemoSession(): AuthSession {
 
 export function isUserAdmin(session: AuthSession | null): boolean {
   if (!session) return false;
-  if (session.demo) return true;
+  if (session.demo) return false;
   if (session.role?.toUpperCase() === "ADMIN" || session.role?.toUpperCase() === "ROLE_ADMIN") {
     return true;
   }
