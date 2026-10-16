@@ -1,4 +1,4 @@
-# AgroCenter Digital — Frontend Web (`front-web`)
+# AgroCenter Digital — Frontend Web (`front-web`), test
 
 Aplicación web React / Next.js para la plataforma **AgroCenter Digital**, optimizada para la experiencia de clientes y administradores en la gestión de compras, ventas, inventario y catálogo.
 
