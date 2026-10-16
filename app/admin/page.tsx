@@ -17,6 +17,7 @@ import {
   Filter,
   Layers,
   Leaf,
+  Network,
   Package,
   Plus,
   RefreshCw,
@@ -34,6 +35,7 @@ import {
 } from "lucide-react";
 import { AuthSession, isUserAdmin, readAuthSession } from "@/lib/cognito";
 import { apiRequest } from "@/lib/api";
+import MessagingAdmin from "./components/MessagingAdmin";
 
 type ApiEndpoint = {
   id: string;
@@ -262,7 +264,7 @@ const fallbackInitialPurchases: PurchaseAdmin[] = [
 
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console">("inventory");
+  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "mensajeria">("inventory");
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -914,6 +916,27 @@ export default function AdminPage() {
               <Terminal size={16} />
               <span>Consola</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab("mensajeria")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 650,
+                border: "none",
+                cursor: "pointer",
+                background: activeTab === "mensajeria" ? "var(--green-800)" : "transparent",
+                color: activeTab === "mensajeria" ? "#fff" : "var(--ink-soft)",
+                transition: "all 0.15s",
+              }}
+            >
+              <Network size={16} />
+              <span>Mensajería</span>
+            </button>
           </div>
         </div>
       </header>
@@ -1118,6 +1141,9 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* TAB: ADMINISTRACIÓN DE MENSAJERÍA (KAFKA) */}
+        {activeTab === "mensajeria" && <MessagingAdmin />}
 
         {/* TAB: VISOR MULTI-SERVICIO Y AUDITORÍA RDS (INVENTARIO / VENTAS / COMPRAS) */}
         {(activeTab === "inventory" || activeTab === "sales" || activeTab === "purchases") && (
