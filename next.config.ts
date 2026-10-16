@@ -7,21 +7,18 @@ const nextConfig = {
     ignoreBuildErrors: false,
   },
   async rewrites() {
-    // Permite actuar como proxy inverso desde Vercel hacia la EC2 de AWS Academy
-    // evitando bloqueos de "Mixed Content" (HTTPS en Vercel -> HTTP en IP de EC2).
-    const backendUrl =
+    // Redirige las peticiones /api/* desde el dominio seguro de Vercel (HTTPS)
+    // hacia el backend en la EC2 por HTTP, evitando el error de Mixed Content.
+    const backendUrl = (
       process.env.BACKEND_INTERNAL_URL ||
-      process.env.NEXT_PUBLIC_API_BASE_URL;
+      process.env.NEXT_PUBLIC_API_BASE_URL ||
+      "http://34.201.161.216:8080"
+    ).replace(/\/$/, "");
 
-    if (!backendUrl) {
-      return [];
-    }
-
-    const cleanBackendUrl = backendUrl.replace(/\/$/, "");
     return [
       {
-        source: "/api/bff/:path*",
-        destination: `${cleanBackendUrl}/api/bff/:path*`,
+        source: "/api/:path*",
+        destination: `${backendUrl}/api/:path*`,
       },
     ];
   },

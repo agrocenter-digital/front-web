@@ -318,11 +318,6 @@ export default function AdminPage() {
     loadPurchases();
   }, []);
 
-  const API_BASE_URL = (
-    process.env.NEXT_PUBLIC_API_BASE_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    ""
-  ).replace(/\/$/, "");
 
   // Función para hacer Ping a un endpoint individual
   async function pingEndpoint(endpointConfig: ApiEndpoint) {
@@ -336,7 +331,7 @@ export default function AdminPage() {
       const cleanEndpoint = endpointConfig.endpoint.startsWith("/")
         ? endpointConfig.endpoint
         : `/${endpointConfig.endpoint}`;
-      const url = `${API_BASE_URL}${cleanEndpoint}`;
+      const url = cleanEndpoint;
 
       const activeSession = session || readAuthSession();
       const token = activeSession?.accessToken || activeSession?.idToken;
@@ -604,12 +599,13 @@ export default function AdminPage() {
     setConsoleStatus(null);
     setConsoleLatency(null);
 
+    const cleanEndpoint = selectedConsoleEndpoint.startsWith("/")
+      ? selectedConsoleEndpoint
+      : `/${selectedConsoleEndpoint}`;
+
     const start = performance.now();
     try {
-      const cleanEndpoint = selectedConsoleEndpoint.startsWith("/")
-        ? selectedConsoleEndpoint
-        : `/${selectedConsoleEndpoint}`;
-      const url = `${API_BASE_URL}${cleanEndpoint}`;
+      const url = cleanEndpoint;
 
       const activeSession = session || readAuthSession();
       const token = activeSession?.accessToken || activeSession?.idToken;
@@ -640,7 +636,7 @@ export default function AdminPage() {
           {
             error: "Error de conexión",
             message: err instanceof Error ? err.message : "El servicio no respondió",
-            targetUrl: `${API_BASE_URL}${selectedConsoleEndpoint}`,
+            targetUrl: cleanEndpoint,
           },
           null,
           2

@@ -1,6 +1,9 @@
 import { readAuthSession } from "./cognito";
 
+const isBrowser = typeof window !== "undefined";
+
 const API_BASE_URL = (
+  process.env.BACKEND_INTERNAL_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
   ""
@@ -32,7 +35,12 @@ export async function apiRequest<T>(
   }
 
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
-  const response = await fetch(`${API_BASE_URL}${cleanEndpoint}`, {
+
+  // En el navegador siempre se utiliza la ruta relativa /api/... para que Vercel
+  // gestione la petición mediante Rewrites (proxy inverso interno) y evite Mixed Content.
+  const targetUrl = isBrowser ? cleanEndpoint : `${API_BASE_URL}${cleanEndpoint}`;
+
+  const response = await fetch(targetUrl, {
     ...options,
     headers,
   });
