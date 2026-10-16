@@ -12,7 +12,7 @@ const nextConfig = {
     const backendUrl = (
       process.env.BACKEND_INTERNAL_URL ||
       process.env.NEXT_PUBLIC_API_BASE_URL ||
-      "http://34.201.161.216:8080"
+      "http://100.61.60.249:8080"
     ).replace(/\/$/, "");
 
     return [
