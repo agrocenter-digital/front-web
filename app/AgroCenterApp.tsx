@@ -129,24 +129,30 @@ export default function AgroCenterApp() {
         setCatalog(
           items
             .filter((p) => p.activo !== false)
-            .map((p) => ({
-              id: p.id,
-              name: p.nombre,
-              category: p.categoria?.trim() || "Sin categoría",
-              price:
-                typeof p.precioVenta === "number" &&
-                Number.isFinite(p.precioVenta)
-                  ? p.precioVenta
-                  : null,
-              unit: p.presentacion || "Unidad",
-              stock: p.stockActual,
-              description: p.descripcion || "",
-              image: p.imagenUrl?.startsWith("https://")
-                ? p.imagenUrl
-                : "/product-placeholder.svg",
-              sku: p.sku,
-              quoteOnly: p.soloCotizacion === true,
-            })),
+            .map((p) => {
+              const categoria = p.categoria?.trim() || "Sin categoría";
+              const esMaquinaria = categoria.toLowerCase() === "maquinaria";
+              return {
+                id: p.id,
+                name: p.nombre,
+                category: categoria,
+                price:
+                  typeof p.precioVenta === "number" &&
+                  Number.isFinite(p.precioVenta)
+                    ? p.precioVenta
+                    : null,
+                unit: p.presentacion || "Unidad",
+                stock: p.stockActual,
+                description: p.descripcion || "",
+                image: p.imagenUrl?.startsWith("https://")
+                  ? p.imagenUrl
+                  : "/product-placeholder.svg",
+                sku: p.sku,
+                // La maquinaria se atiende como venta mayorista/cotización, aunque el
+                // backend solo marque por SKU los productos de cotización.
+                quoteOnly: p.soloCotizacion === true || esMaquinaria,
+              };
+            }),
         );
         setCatalogError("");
       })

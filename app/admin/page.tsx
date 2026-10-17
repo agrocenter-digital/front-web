@@ -793,6 +793,7 @@ export default function AdminPage() {
       categoria: newCategoria,
       descripcion: newDescripcion.trim(),
       precioVenta: Number(newPrecio),
+      stockActual: Math.max(0, Math.floor(Number(newStock) || 0)),
       stockMinimo: Number(newStockMinimo),
     };
 
@@ -809,7 +810,7 @@ export default function AdminPage() {
         categoria: created?.categoria || payload.categoria,
         descripcion: created?.descripcion || payload.descripcion,
         precioVenta: created?.precioVenta || payload.precioVenta,
-        stockActual: Number(newStock),
+        stockActual: created?.stockActual ?? payload.stockActual,
         stockMinimo: created?.stockMinimo || payload.stockMinimo,
         activo: true,
       };
