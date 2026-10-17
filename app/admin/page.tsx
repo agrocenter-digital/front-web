@@ -92,10 +92,24 @@ type SaleAdmin = {
 type PurchaseDetailAdmin = {
   id?: number;
   productoId: number;
+  sku?: string;
   nombre?: string;
   cantidad: number;
   precioUnitario: number;
   subtotal: number;
+};
+
+type StockOperationResponse = {
+  movimientoId: number;
+  productoId: number;
+  sku: string;
+  tipoMovimiento: string;
+  cantidad: number;
+  stockAnterior: number;
+  stockPosterior: number;
+  referencia: string;
+  duplicada: boolean;
+  fecha: string;
 };
 
 type PurchaseAdmin = {
@@ -355,6 +369,7 @@ export default function AdminPage() {
   const [configProveedorId, setConfigProveedorId] = useState(proveedoresCompra[0].id);
   const [configGuardado, setConfigGuardado] = useState(false);
   const [confirmPurchase, setConfirmPurchase] = useState<PurchaseAdmin | null>(null);
+  const [isConfirmingPurchase, setIsConfirmingPurchase] = useState(false);
 
   // Form State para Nuevo Producto
   const [newSku, setNewSku] = useState("");
@@ -544,8 +559,9 @@ export default function AdminPage() {
           total: Number(c.total || 0),
           detalles: (c.detalles || c.items || []).map((it: any) => ({
             id: it.id,
-            productoId: it.productoId || 0,
-            nombre: it.nombre || `Insumo #${it.productoId || ""}`,
+            productoId: it.productoId || it.insumoId || 0,
+            sku: it.sku || it.insumoSku || undefined,
+            nombre: it.nombre || it.productoNombre || it.insumoNombre || undefined,
             cantidad: Number(it.cantidad || 0),
             precioUnitario: Number(it.precioUnitario || 0),
             subtotal: Number(it.subtotal || 0),
@@ -562,6 +578,23 @@ export default function AdminPage() {
 
   function primaryDetail(pc: PurchaseAdmin): PurchaseDetailAdmin | null {
     return pc.detalles && pc.detalles[0] ? pc.detalles[0] : null;
+  }
+
+  // Resuelve el nombre del insumo de un detalle de compra contra el inventario global
+  // (por productoId, luego por SKU). Si no se encuentra, usa el nombre recibido o el ID.
+  function nombreInsumo(it: PurchaseDetailAdmin): string {
+    const porId = products.find((p) => p.id === it.productoId);
+    if (porId) return porId.nombre;
+
+    if (it.sku) {
+      const porSku = products.find((p) => p.sku === it.sku);
+      if (porSku) return porSku.nombre;
+    }
+
+    if (it.nombre && it.nombre.trim() && !/^Insumo\s*#/i.test(it.nombre.trim())) {
+      return it.nombre.trim();
+    }
+    return `Insumo #${it.productoId}`;
   }
 
   // Mapea el precio base del insumo consultando el estado global de inventario.
@@ -638,12 +671,72 @@ export default function AdminPage() {
     setConfigGuardado(false);
   }
 
-  function confirmarOrdenCompra() {
+  async function confirmarOrdenCompra() {
     if (!confirmPurchase) return;
-    setPurchases((prev) =>
-      prev.map((p) => (p.id === confirmPurchase.id ? { ...p, estado: "CONFIRMADA" } : p))
-    );
+    const compra = confirmPurchase;
+    setIsConfirmingPurchase(true);
+    setProductFeedback(null);
+
+    const referencia = `CMP-${compra.id}`;
+    const detalles = (compra.detalles || []).filter((it) => it.productoId > 0 && it.cantidad > 0);
+    const stockActualizado: Record<number, number> = {};
+    let problema: string | null = null;
+
+    for (const it of detalles) {
+      try {
+        const respuesta = await apiRequest<StockOperationResponse>("/api/bff/inventario/stock/entrada", {
+          method: "POST",
+          body: JSON.stringify({ productoId: it.productoId, cantidad: it.cantidad, referencia }),
+        });
+        const productoId = respuesta?.productoId ?? it.productoId;
+        if (typeof respuesta?.stockPosterior === "number") {
+          stockActualizado[productoId] = respuesta.stockPosterior;
+        }
+      } catch {
+        // Respaldo: si el endpoint de entrada no está disponible, se actualiza el producto por ID.
+        const actual = products.find((p) => p.id === it.productoId);
+        if (!actual) {
+          problema = `El insumo #${it.productoId} no está en el inventario`;
+          continue;
+        }
+        const nuevoStock = actual.stockActual + it.cantidad;
+        try {
+          await apiRequest(`/api/bff/inventario/productos/${actual.id}`, {
+            method: "PUT",
+            body: JSON.stringify({
+              sku: actual.sku,
+              nombre: actual.nombre,
+              categoria: actual.categoria,
+              descripcion: actual.descripcion || "",
+              precioVenta: actual.precioVenta,
+              stockActual: nuevoStock,
+              stockMinimo: actual.stockMinimo,
+            }),
+          });
+          stockActualizado[actual.id] = nuevoStock;
+        } catch (err) {
+          problema = err instanceof Error ? err.message : "Error al actualizar el stock";
+        }
+      }
+    }
+
+    // Refleja el nuevo stock de inmediato en el inventario local.
+    if (Object.keys(stockActualizado).length > 0) {
+      setProducts((prev) =>
+        prev.map((p) =>
+          stockActualizado[p.id] !== undefined ? { ...p, stockActual: stockActualizado[p.id] } : p
+        )
+      );
+    }
+
+    setPurchases((prev) => prev.map((p) => (p.id === compra.id ? { ...p, estado: "CONFIRMADA" } : p)));
     setConfirmPurchase(null);
+    setProductFeedback(
+      problema
+        ? `Orden #CMP-${compra.id} confirmada, pero no se pudo actualizar todo el stock: ${problema}`
+        : `Orden #CMP-${compra.id} confirmada. Stock del inventario actualizado correctamente.`
+    );
+    setIsConfirmingPurchase(false);
   }
 
   // Crear nuevo producto en el catálogo
@@ -2028,25 +2121,40 @@ export default function AdminPage() {
                               </div>
                             </td>
                             <td style={{ padding: "14px 16px" }}>
-                              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 {pc.detalles && pc.detalles.length > 0 ? (
                                   pc.detalles.map((it, idx) => (
-                                    <span
+                                    <div
                                       key={idx}
                                       style={{
-                                        display: "inline-flex",
+                                        display: "flex",
                                         alignItems: "center",
-                                        gap: 4,
-                                        fontSize: 11,
+                                        gap: 8,
+                                        fontSize: 12,
                                         background: "#f0f4f1",
-                                        padding: "2px 6px",
-                                        borderRadius: 4,
+                                        padding: "5px 10px",
+                                        borderRadius: 6,
                                         color: "var(--green-950)",
                                       }}
                                     >
-                                      <strong>{it.cantidad} un.</strong> {it.nombre || `Insumo #${it.productoId}`} (
-                                      ${it.precioUnitario?.toLocaleString("es-CL")})
-                                    </span>
+                                      <span
+                                        style={{
+                                          flexShrink: 0,
+                                          fontSize: 11,
+                                          fontWeight: 800,
+                                          background: "var(--green-100)",
+                                          color: "var(--green-900)",
+                                          padding: "1px 7px",
+                                          borderRadius: 10,
+                                        }}
+                                      >
+                                        {it.cantidad} un.
+                                      </span>
+                                      <span style={{ fontWeight: 600 }}>{nombreInsumo(it)}</span>
+                                      <span style={{ marginLeft: "auto", color: "var(--muted)", fontSize: 11, whiteSpace: "nowrap" }}>
+                                        ${it.precioUnitario?.toLocaleString("es-CL")}
+                                      </span>
+                                    </div>
                                   ))
                                 ) : (
                                   <span style={{ fontSize: 11, color: "var(--muted)" }}>Sin ítems detallados</span>
@@ -2799,6 +2907,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 onClick={confirmarOrdenCompra}
+                disabled={isConfirmingPurchase}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
@@ -2809,11 +2918,20 @@ export default function AdminPage() {
                   background: "var(--green-700)",
                   color: "#fff",
                   fontWeight: 700,
-                  cursor: "pointer",
+                  cursor: isConfirmingPurchase ? "not-allowed" : "pointer",
+                  opacity: isConfirmingPurchase ? 0.7 : 1,
                   fontSize: 13,
                 }}
               >
-                <CheckCircle2 size={15} /> Confirmar
+                {isConfirmingPurchase ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" /> Actualizando stock...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 size={15} /> Confirmar
+                  </>
+                )}
               </button>
             </div>
           </div>
