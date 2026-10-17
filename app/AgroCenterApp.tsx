@@ -131,7 +131,14 @@ export default function AgroCenterApp() {
             .filter((p) => p.activo !== false)
             .map((p) => {
               const categoria = p.categoria?.trim() || "Sin categoría";
-              const esMaquinaria = categoria.toLowerCase() === "maquinaria";
+              const categoriaNormalizada = categoria.toLowerCase();
+              const categoriasCotizacion = ["maquinaria", "big bags", "lote", "pallet"];
+              const sku = (p.sku || "").trim().toUpperCase();
+              const esCotizacion =
+                p.soloCotizacion === true ||
+                categoriasCotizacion.includes(categoriaNormalizada) ||
+                sku.startsWith("MAY-") ||
+                sku.startsWith("MAQ-");
               return {
                 id: p.id,
                 name: p.nombre,
@@ -148,9 +155,9 @@ export default function AgroCenterApp() {
                   ? p.imagenUrl
                   : "/product-placeholder.svg",
                 sku: p.sku,
-                // La maquinaria se atiende como venta mayorista/cotización, aunque el
-                // backend solo marque por SKU los productos de cotización.
-                quoteOnly: p.soloCotizacion === true || esMaquinaria,
+                // Maquinaria, big bags, lotes, pallets o productos marcados como
+                // mayoristas/cotización se atienden solo por cotización B2B.
+                quoteOnly: esCotizacion,
               };
             }),
         );

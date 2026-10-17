@@ -2508,6 +2508,9 @@ export default function AdminPage() {
                     <option value="Riego">Riego</option>
                     <option value="Herramientas">Herramientas</option>
                     <option value="Maquinaria">Maquinaria</option>
+                    <option value="Big Bags">Big Bags</option>
+                    <option value="Lote">Lote</option>
+                    <option value="Pallet">Pallet</option>
                   </select>
                 </div>
 
