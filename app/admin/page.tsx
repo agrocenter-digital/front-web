@@ -111,43 +111,37 @@ type PurchaseAdmin = {
 type ProveedorPerfil = {
   id: number;
   nombre: string;
-  perfil: string;
   factorPrecio: number;
   diasEntrega: number;
   entregaLegible: string;
-  color: string;
   descripcion: string;
 };
+
+const PRECIO_BASE_FALLBACK = 34990;
 
 const proveedoresCompra: ProveedorPerfil[] = [
   {
     id: 101,
     nombre: "AgroInsumos Chile",
-    perfil: "Balanceado",
     factorPrecio: 1,
     diasEntrega: 7,
     entregaLegible: "7 días (1 semana)",
-    color: "var(--green-700)",
-    descripcion: "Precio base de catálogo con entrega en una semana.",
+    descripcion: "Precio base del catálogo, entrega en una semana.",
   },
   {
     id: 102,
     nombre: "Comercializadora El Valle",
-    perfil: "Económico",
     factorPrecio: 0.8,
     diasEntrega: 12,
     entregaLegible: "12 días (~2 semanas)",
-    color: "#0f766e",
     descripcion: "20% más barato, ideal para reposición planificada.",
   },
   {
     id: 103,
     nombre: "Distribuidora Agrícola Exprés",
-    perfil: "Exprés / Rápido",
     factorPrecio: 1.2,
     diasEntrega: 3,
     entregaLegible: "3 días",
-    color: "#b45309",
     descripcion: "20% más caro, prioriza la urgencia del abastecimiento.",
   },
 ];
@@ -360,7 +354,6 @@ export default function AdminPage() {
   const [configCantidadOriginal, setConfigCantidadOriginal] = useState(1);
   const [configProveedorId, setConfigProveedorId] = useState(proveedoresCompra[0].id);
   const [configGuardado, setConfigGuardado] = useState(false);
-  const [purchaseBasePrices, setPurchaseBasePrices] = useState<Record<number, number>>({});
   const [confirmPurchase, setConfirmPurchase] = useState<PurchaseAdmin | null>(null);
 
   // Form State para Nuevo Producto
@@ -571,10 +564,28 @@ export default function AdminPage() {
     return pc.detalles && pc.detalles[0] ? pc.detalles[0] : null;
   }
 
+  // Mapea el precio base del insumo consultando el estado global de inventario.
+  // La orden de compra solo trae el ID del insumo, por lo que se busca por productoId
+  // (y como respaldo por nombre). Si no existe, se usa el precio del detalle o el fallback.
+  function precioBaseInsumo(pc: PurchaseAdmin): number {
+    const detalle = primaryDetail(pc);
+    if (detalle) {
+      const porId = products.find((p) => p.id === detalle.productoId);
+      if (porId && porId.precioVenta > 0) return porId.precioVenta;
+
+      if (detalle.nombre) {
+        const nombreBuscado = detalle.nombre.toLowerCase();
+        const porNombre = products.find((p) => p.nombre.toLowerCase() === nombreBuscado);
+        if (porNombre && porNombre.precioVenta > 0) return porNombre.precioVenta;
+      }
+
+      if (detalle.precioUnitario > 0) return detalle.precioUnitario;
+    }
+    return PRECIO_BASE_FALLBACK;
+  }
+
   function abrirConfiguracionCompra(pc: PurchaseAdmin) {
     const detalle = primaryDetail(pc);
-    const base = purchaseBasePrices[pc.id] ?? (detalle ? detalle.precioUnitario : 0);
-    setPurchaseBasePrices((prev) => (prev[pc.id] !== undefined ? prev : { ...prev, [pc.id]: base }));
     const proveedorActual = proveedoresCompra.find((prov) => prov.nombre === pc.proveedorNombre);
     setConfigPurchase(pc);
     setConfigCantidad(detalle ? detalle.cantidad : 1);
@@ -586,7 +597,7 @@ export default function AdminPage() {
   function guardarConfiguracionCompra() {
     if (!configPurchase) return;
     const proveedor = proveedoresCompra.find((prov) => prov.id === configProveedorId) ?? proveedoresCompra[0];
-    const base = purchaseBasePrices[configPurchase.id] ?? (primaryDetail(configPurchase)?.precioUnitario || 0);
+    const base = precioBaseInsumo(configPurchase);
     const precioUnitario = Math.round(base * proveedor.factorPrecio);
     const cantidad = Math.max(1, Math.floor(configCantidad) || 1);
 
@@ -865,9 +876,7 @@ export default function AdminPage() {
   });
 
   const proveedorConfig = proveedoresCompra.find((prov) => prov.id === configProveedorId) ?? proveedoresCompra[0];
-  const baseConfig = configPurchase
-    ? purchaseBasePrices[configPurchase.id] ?? (primaryDetail(configPurchase)?.precioUnitario || 0)
-    : 0;
+  const baseConfig = configPurchase ? precioBaseInsumo(configPurchase) : 0;
   const precioUnitarioConfig = Math.round(baseConfig * proveedorConfig.factorPrecio);
   const cantidadConfig = Math.max(1, Math.floor(configCantidad) || 1);
   const totalConfig = precioUnitarioConfig * cantidadConfig;
@@ -2602,23 +2611,7 @@ export default function AdminPage() {
                       transition: "all 0.15s",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-                      <strong style={{ fontSize: 13, color: "var(--green-950)" }}>{prov.nombre}</strong>
-                      <span
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 800,
-                          padding: "2px 8px",
-                          borderRadius: 10,
-                          background: prov.color,
-                          color: "#fff",
-                          textTransform: "uppercase",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {prov.perfil}
-                      </span>
-                    </div>
+                    <strong style={{ fontSize: 13, color: "var(--green-950)" }}>{prov.nombre}</strong>
                     <span style={{ fontSize: 11, color: "var(--muted)" }}>{prov.descripcion}</span>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 14, fontSize: 12, marginTop: 4, color: "var(--ink-soft)" }}>
                       <span>
