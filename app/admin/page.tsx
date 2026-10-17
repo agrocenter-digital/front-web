@@ -550,23 +550,27 @@ export default function AdminPage() {
       }
       const list = Array.isArray(data) ? data : data?.contenido || data?.content || [];
       if (list.length > 0) {
-        const mapped: PurchaseAdmin[] = list.map((c: any) => ({
-          id: c.id,
-          proveedorId: c.proveedorId || 101,
-          proveedorNombre: c.proveedorNombre || `Proveedor #${c.proveedorId || 101}`,
-          fechaCreacion: c.fechaCreacion || c.createdAt || new Date().toISOString(),
-          estado: (c.estado || "COMPLETADA").toUpperCase(),
-          total: Number(c.total || 0),
-          detalles: (c.detalles || c.items || []).map((it: any) => ({
-            id: it.id,
-            productoId: it.productoId || it.insumoId || 0,
-            sku: it.sku || it.insumoSku || undefined,
-            nombre: it.nombre || it.productoNombre || it.insumoNombre || undefined,
-            cantidad: Number(it.cantidad || 0),
-            precioUnitario: Number(it.precioUnitario || 0),
-            subtotal: Number(it.subtotal || 0),
-          })),
-        }));
+        const mapped: PurchaseAdmin[] = list.map((c: any) => {
+          const proveedorId = c.proveedorId || 101;
+          const perfil = proveedoresCompra.find((prov) => prov.id === proveedorId);
+          return {
+            id: c.id,
+            proveedorId,
+            proveedorNombre: c.proveedorNombre || perfil?.nombre || `Proveedor #${proveedorId}`,
+            fechaCreacion: c.fechaCreacion || c.createdAt || new Date().toISOString(),
+            estado: (c.estado || "COMPLETADA").toUpperCase(),
+            total: Number(c.total || 0),
+            detalles: (c.detalles || c.items || []).map((it: any) => ({
+              id: it.id,
+              productoId: it.productoId || it.insumoId || 0,
+              sku: it.sku || it.insumoSku || undefined,
+              nombre: it.nombre || it.productoNombre || it.insumoNombre || undefined,
+              cantidad: Number(it.cantidad || 0),
+              precioUnitario: Number(it.precioUnitario || 0),
+              subtotal: Number(it.subtotal || 0),
+            })),
+          };
+        });
         setPurchases(mapped);
       }
     } catch (err: unknown) {
@@ -619,7 +623,9 @@ export default function AdminPage() {
 
   function abrirConfiguracionCompra(pc: PurchaseAdmin) {
     const detalle = primaryDetail(pc);
-    const proveedorActual = proveedoresCompra.find((prov) => prov.nombre === pc.proveedorNombre);
+    const proveedorActual =
+      proveedoresCompra.find((prov) => prov.id === pc.proveedorId) ??
+      proveedoresCompra.find((prov) => prov.nombre === pc.proveedorNombre);
     setConfigPurchase(pc);
     setConfigCantidad(detalle ? detalle.cantidad : 1);
     setConfigCantidadOriginal(detalle ? detalle.cantidad : 1);
@@ -673,6 +679,10 @@ export default function AdminPage() {
 
   async function confirmarOrdenCompra() {
     if (!confirmPurchase) return;
+    if (confirmPurchase.total <= 0) {
+      setConfirmPurchase(null);
+      return;
+    }
     const compra = confirmPurchase;
     setIsConfirmingPurchase(true);
     setProductFeedback(null);
@@ -729,12 +739,44 @@ export default function AdminPage() {
       );
     }
 
-    setPurchases((prev) => prev.map((p) => (p.id === compra.id ? { ...p, estado: "CONFIRMADA" } : p)));
+    // Persiste el estado CONFIRMADA y los datos configurados (proveedor, cantidad y monto)
+    // en la base de datos vía BFF -> ms-compras.
+    const payloadConfirmacion: Record<string, unknown> = {
+      proveedorId: compra.proveedorId,
+      montoTotal: compra.total,
+    };
+    if (detalles.length > 0) {
+      payloadConfirmacion.detalles = detalles.map((it) => ({
+        productoId: it.productoId,
+        cantidad: it.cantidad,
+        precioUnitario: it.precioUnitario,
+      }));
+    } else {
+      payloadConfirmacion.cantidad = primaryDetail(compra)?.cantidad ?? 1;
+    }
+
+    let estadoError: string | null = null;
+    try {
+      await apiRequest(`/api/bff/compras/${compra.id}/confirmar`, {
+        method: "PATCH",
+        body: JSON.stringify(payloadConfirmacion),
+      });
+    } catch (err) {
+      estadoError = err instanceof Error ? err.message : "error desconocido";
+    }
+
+    if (!estadoError) {
+      setPurchases((prev) => prev.map((p) => (p.id === compra.id ? { ...p, estado: "CONFIRMADA" } : p)));
+      // Refresca desde la base de datos para mostrar el proveedor y monto reales persistidos.
+      await loadPurchases();
+    }
     setConfirmPurchase(null);
     setProductFeedback(
-      problema
-        ? `Orden #CMP-${compra.id} confirmada, pero no se pudo actualizar todo el stock: ${problema}`
-        : `Orden #CMP-${compra.id} confirmada. Stock del inventario actualizado correctamente.`
+      estadoError
+        ? `No se pudo guardar la confirmación de la orden #CMP-${compra.id}: ${estadoError}`
+        : problema
+        ? `Orden #CMP-${compra.id} confirmada y guardada, pero hubo un problema con el stock: ${problema}`
+        : `Orden #CMP-${compra.id} confirmada y guardada en la base de datos. Stock actualizado correctamente.`
     );
     setIsConfirmingPurchase(false);
   }
@@ -2103,6 +2145,7 @@ export default function AdminPage() {
                         const isConfirmed = estado === "CONFIRMADA";
                         const isDone = estado === "COMPLETADA" || estado === "RECIBIDA" || isConfirmed;
                         const isTransit = estado === "EN_TRANSITO";
+                        const puedeConfirmar = pc.total > 0 && !isConfirmingPurchase;
                         return (
                           <tr key={pc.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
                             <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--green-900)" }}>
@@ -2172,6 +2215,7 @@ export default function AdminPage() {
                                       type="button"
                                       title="Configurar compra (cantidad y proveedor)"
                                       onClick={() => abrirConfiguracionCompra(pc)}
+                                      disabled={isConfirmingPurchase}
                                       style={{
                                         display: "inline-flex",
                                         alignItems: "center",
@@ -2182,7 +2226,8 @@ export default function AdminPage() {
                                         border: "1px solid var(--line)",
                                         background: "var(--surface)",
                                         color: "var(--green-800)",
-                                        cursor: "pointer",
+                                        cursor: isConfirmingPurchase ? "not-allowed" : "pointer",
+                                        opacity: isConfirmingPurchase ? 0.5 : 1,
                                         transition: "all 0.15s",
                                       }}
                                     >
@@ -2190,8 +2235,9 @@ export default function AdminPage() {
                                     </button>
                                     <button
                                       type="button"
-                                      title="Confirmar orden de compra"
+                                      title={pc.total > 0 ? "Confirmar orden de compra" : "Configure un monto válido antes de confirmar"}
                                       onClick={() => setConfirmPurchase(pc)}
+                                      disabled={!puedeConfirmar}
                                       style={{
                                         display: "inline-flex",
                                         alignItems: "center",
@@ -2202,7 +2248,8 @@ export default function AdminPage() {
                                         border: "1px solid var(--line)",
                                         background: "var(--surface)",
                                         color: "var(--green-800)",
-                                        cursor: "pointer",
+                                        cursor: puedeConfirmar ? "pointer" : "not-allowed",
+                                        opacity: puedeConfirmar ? 1 : 0.4,
                                         transition: "all 0.15s",
                                       }}
                                     >
