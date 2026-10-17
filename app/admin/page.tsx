@@ -21,9 +21,12 @@ import {
   Package,
   Plus,
   RefreshCw,
+  RotateCcw,
+  Save,
   Search,
   Send,
   Server,
+  Settings,
   ShieldCheck,
   ShoppingCart,
   Tag,
@@ -104,6 +107,50 @@ type PurchaseAdmin = {
   total: number;
   detalles: PurchaseDetailAdmin[];
 };
+
+type ProveedorPerfil = {
+  id: number;
+  nombre: string;
+  perfil: string;
+  factorPrecio: number;
+  diasEntrega: number;
+  entregaLegible: string;
+  color: string;
+  descripcion: string;
+};
+
+const proveedoresCompra: ProveedorPerfil[] = [
+  {
+    id: 101,
+    nombre: "AgroInsumos Chile",
+    perfil: "Balanceado",
+    factorPrecio: 1,
+    diasEntrega: 7,
+    entregaLegible: "7 días (1 semana)",
+    color: "var(--green-700)",
+    descripcion: "Precio base de catálogo con entrega en una semana.",
+  },
+  {
+    id: 102,
+    nombre: "Comercializadora El Valle",
+    perfil: "Económico",
+    factorPrecio: 0.8,
+    diasEntrega: 12,
+    entregaLegible: "12 días (~2 semanas)",
+    color: "#0f766e",
+    descripcion: "20% más barato, ideal para reposición planificada.",
+  },
+  {
+    id: 103,
+    nombre: "Distribuidora Agrícola Exprés",
+    perfil: "Exprés / Rápido",
+    factorPrecio: 1.2,
+    diasEntrega: 3,
+    entregaLegible: "3 días",
+    color: "#b45309",
+    descripcion: "20% más caro, prioriza la urgencia del abastecimiento.",
+  },
+];
 
 const monitoredEndpoints: ApiEndpoint[] = [
   {
@@ -260,6 +307,24 @@ const fallbackInitialPurchases: PurchaseAdmin[] = [
       },
     ],
   },
+  {
+    id: 2,
+    proveedorId: 101,
+    proveedorNombre: "AgroInsumos Chile",
+    fechaCreacion: new Date(Date.now() - 3600000).toISOString(),
+    estado: "PENDIENTE",
+    total: 183960,
+    detalles: [
+      {
+        id: 2,
+        productoId: 1,
+        nombre: "Semillas de Maíz Híbrido 25 kg",
+        cantidad: 4,
+        precioUnitario: 45990,
+        subtotal: 183960,
+      },
+    ],
+  },
 ];
 
 export default function AdminPage() {
@@ -288,6 +353,15 @@ export default function AdminPage() {
   // Purchases State (ms-compras)
   const [purchases, setPurchases] = useState<PurchaseAdmin[]>(fallbackInitialPurchases);
   const [isLoadingPurchases, setIsLoadingPurchases] = useState(false);
+
+  // Configuración interactiva de compras PENDIENTES
+  const [configPurchase, setConfigPurchase] = useState<PurchaseAdmin | null>(null);
+  const [configCantidad, setConfigCantidad] = useState(1);
+  const [configCantidadOriginal, setConfigCantidadOriginal] = useState(1);
+  const [configProveedorId, setConfigProveedorId] = useState(proveedoresCompra[0].id);
+  const [configGuardado, setConfigGuardado] = useState(false);
+  const [purchaseBasePrices, setPurchaseBasePrices] = useState<Record<number, number>>({});
+  const [confirmPurchase, setConfirmPurchase] = useState<PurchaseAdmin | null>(null);
 
   // Form State para Nuevo Producto
   const [newSku, setNewSku] = useState("");
@@ -491,6 +565,74 @@ export default function AdminPage() {
     } finally {
       setIsLoadingPurchases(false);
     }
+  }
+
+  function primaryDetail(pc: PurchaseAdmin): PurchaseDetailAdmin | null {
+    return pc.detalles && pc.detalles[0] ? pc.detalles[0] : null;
+  }
+
+  function abrirConfiguracionCompra(pc: PurchaseAdmin) {
+    const detalle = primaryDetail(pc);
+    const base = purchaseBasePrices[pc.id] ?? (detalle ? detalle.precioUnitario : 0);
+    setPurchaseBasePrices((prev) => (prev[pc.id] !== undefined ? prev : { ...prev, [pc.id]: base }));
+    const proveedorActual = proveedoresCompra.find((prov) => prov.nombre === pc.proveedorNombre);
+    setConfigPurchase(pc);
+    setConfigCantidad(detalle ? detalle.cantidad : 1);
+    setConfigCantidadOriginal(detalle ? detalle.cantidad : 1);
+    setConfigProveedorId(proveedorActual ? proveedorActual.id : proveedoresCompra[0].id);
+    setConfigGuardado(false);
+  }
+
+  function guardarConfiguracionCompra() {
+    if (!configPurchase) return;
+    const proveedor = proveedoresCompra.find((prov) => prov.id === configProveedorId) ?? proveedoresCompra[0];
+    const base = purchaseBasePrices[configPurchase.id] ?? (primaryDetail(configPurchase)?.precioUnitario || 0);
+    const precioUnitario = Math.round(base * proveedor.factorPrecio);
+    const cantidad = Math.max(1, Math.floor(configCantidad) || 1);
+
+    const detalles: PurchaseDetailAdmin[] =
+      configPurchase.detalles && configPurchase.detalles.length > 0
+        ? configPurchase.detalles.map((it, idx) =>
+            idx === 0
+              ? { ...it, cantidad, precioUnitario, subtotal: cantidad * precioUnitario }
+              : it
+          )
+        : [
+            {
+              productoId: 0,
+              nombre: "Insumo sin detalle",
+              cantidad,
+              precioUnitario,
+              subtotal: cantidad * precioUnitario,
+            },
+          ];
+
+    const total = detalles.reduce((acc, it) => acc + (Number(it.subtotal) || 0), 0);
+    const actualizada: PurchaseAdmin = {
+      ...configPurchase,
+      proveedorId: proveedor.id,
+      proveedorNombre: proveedor.nombre,
+      detalles,
+      total,
+    };
+
+    setPurchases((prev) => prev.map((p) => (p.id === actualizada.id ? actualizada : p)));
+    setConfigPurchase(actualizada);
+    setConfigGuardado(true);
+  }
+
+  function reiniciarConfiguracionCompra() {
+    setConfigProveedorId(proveedoresCompra[0].id);
+    setConfigCantidad(configCantidadOriginal);
+    setConfigGuardado(false);
+  }
+
+  function confirmarOrdenCompra() {
+    if (!confirmPurchase) return;
+    setPurchases((prev) =>
+      prev.map((p) => (p.id === confirmPurchase.id ? { ...p, estado: "CONFIRMADA" } : p))
+    );
+    setConfirmPurchase(null);
   }
 
   // Crear nuevo producto en el catálogo
@@ -721,6 +863,15 @@ export default function AdminPage() {
 
     return matchesSearch && matchesStatus;
   });
+
+  const proveedorConfig = proveedoresCompra.find((prov) => prov.id === configProveedorId) ?? proveedoresCompra[0];
+  const baseConfig = configPurchase
+    ? purchaseBasePrices[configPurchase.id] ?? (primaryDetail(configPurchase)?.precioUnitario || 0)
+    : 0;
+  const precioUnitarioConfig = Math.round(baseConfig * proveedorConfig.factorPrecio);
+  const cantidadConfig = Math.max(1, Math.floor(configCantidad) || 1);
+  const totalConfig = precioUnitarioConfig * cantidadConfig;
+  const detalleConfig = configPurchase ? primaryDetail(configPurchase) : null;
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--canvas)", color: "var(--ink)", fontFamily: "sans-serif" }}>
@@ -1425,6 +1576,8 @@ export default function AdminPage() {
                     )}
                     {activeTab === "purchases" && (
                       <>
+                        <option value="PENDIENTE">Pendientes de confirmación</option>
+                        <option value="CONFIRMADA">Confirmadas</option>
                         <option value="COMPLETADA">Completadas / Recibidas</option>
                         <option value="EN_TRANSITO">En Tránsito</option>
                         <option value="CANCELADA">Canceladas</option>
@@ -1843,8 +1996,11 @@ export default function AdminPage() {
                       </tr>
                     ) : (
                       filteredPurchases.map((pc) => {
-                        const isDone = pc.estado.toUpperCase() === "COMPLETADA" || pc.estado.toUpperCase() === "RECIBIDA";
-                        const isTransit = pc.estado.toUpperCase() === "EN_TRANSITO";
+                        const estado = pc.estado.toUpperCase();
+                        const isPending = estado === "PENDIENTE";
+                        const isConfirmed = estado === "CONFIRMADA";
+                        const isDone = estado === "COMPLETADA" || estado === "RECIBIDA" || isConfirmed;
+                        const isTransit = estado === "EN_TRANSITO";
                         return (
                           <tr key={pc.id} style={{ borderBottom: "1px solid var(--line-soft)" }}>
                             <td style={{ padding: "14px 16px", fontFamily: "monospace", fontWeight: 700, color: "var(--green-900)" }}>
@@ -1892,36 +2048,88 @@ export default function AdminPage() {
                               ${pc.total.toLocaleString("es-CL")}
                             </td>
                             <td style={{ padding: "14px 16px", textAlign: "center" }}>
-                              <span
-                                style={{
-                                  display: "inline-flex",
-                                  alignItems: "center",
-                                  gap: 4,
-                                  padding: "3px 10px",
-                                  borderRadius: 12,
-                                  fontSize: 11,
-                                  fontWeight: 750,
-                                  background: isDone
-                                    ? "#dcfce7"
-                                    : isTransit
-                                    ? "#e0e7ff"
-                                    : "#fee2e2",
-                                  color: isDone
-                                    ? "#166534"
-                                    : isTransit
-                                    ? "#3730a3"
-                                    : "#991b1b",
-                                }}
-                              >
-                                {isDone ? (
-                                  <CheckCircle2 size={12} />
-                                ) : isTransit ? (
-                                  <Truck size={12} />
-                                ) : (
-                                  <XCircle size={12} />
+                              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                                {isPending && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      title="Configurar compra (cantidad y proveedor)"
+                                      onClick={() => abrirConfiguracionCompra(pc)}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        width: 26,
+                                        height: 26,
+                                        borderRadius: 6,
+                                        border: "1px solid var(--line)",
+                                        background: "var(--surface)",
+                                        color: "var(--green-800)",
+                                        cursor: "pointer",
+                                        transition: "all 0.15s",
+                                      }}
+                                    >
+                                      <Settings size={14} />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="Confirmar orden de compra"
+                                      onClick={() => setConfirmPurchase(pc)}
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        width: 26,
+                                        height: 26,
+                                        borderRadius: 6,
+                                        border: "1px solid var(--line)",
+                                        background: "var(--surface)",
+                                        color: "var(--green-800)",
+                                        cursor: "pointer",
+                                        transition: "all 0.15s",
+                                      }}
+                                    >
+                                      <ShoppingCart size={14} />
+                                    </button>
+                                  </>
                                 )}
-                                {pc.estado}
-                              </span>
+                                <span
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                    padding: "3px 10px",
+                                    borderRadius: 12,
+                                    fontSize: 11,
+                                    fontWeight: 750,
+                                    background: isDone
+                                      ? "#dcfce7"
+                                      : isTransit
+                                      ? "#e0e7ff"
+                                      : isPending
+                                      ? "#fef3c7"
+                                      : "#fee2e2",
+                                    color: isDone
+                                      ? "#166534"
+                                      : isTransit
+                                      ? "#3730a3"
+                                      : isPending
+                                      ? "#92400e"
+                                      : "#991b1b",
+                                  }}
+                                >
+                                  {isDone ? (
+                                    <CheckCircle2 size={12} />
+                                  ) : isTransit ? (
+                                    <Truck size={12} />
+                                  ) : isPending ? (
+                                    <Clock size={12} />
+                                  ) : (
+                                    <XCircle size={12} />
+                                  )}
+                                  {pc.estado}
+                                </span>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -2307,6 +2515,314 @@ export default function AdminPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIGURACIÓN DE COMPRA PENDIENTE */}
+      {configPurchase && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(10, 35, 25, 0.6)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 60,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              borderRadius: 14,
+              padding: 24,
+              width: "min(640px, 100%)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+              boxShadow: "var(--shadow-lg)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--green-950)", display: "flex", alignItems: "center", gap: 8 }}>
+                <Settings size={18} /> Configuración de Compra #CMP-{configPurchase.id}
+              </h3>
+              <button
+                onClick={() => setConfigPurchase(null)}
+                style={{ background: "transparent", border: "none", cursor: "pointer", color: "var(--muted)" }}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 16px 0" }}>
+              {detalleConfig?.nombre || "Insumo sin detalle"} · Precio base de catálogo: ${baseConfig.toLocaleString("es-CL")}
+            </p>
+
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, marginBottom: 4, color: "var(--green-950)" }}>
+                Cantidad a comprar
+                <input
+                  type="number"
+                  min={1}
+                  value={configCantidad}
+                  onChange={(e) => {
+                    setConfigCantidad(Number(e.target.value));
+                    setConfigGuardado(false);
+                  }}
+                  style={{ width: "100%", marginTop: 4, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--line)", fontSize: 14 }}
+                />
+              </label>
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--green-950)", marginBottom: 8 }}>
+              Selecciona un proveedor
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {proveedoresCompra.map((prov) => {
+                const seleccionado = prov.id === configProveedorId;
+                const precioProv = Math.round(baseConfig * prov.factorPrecio);
+                return (
+                  <button
+                    type="button"
+                    key={prov.id}
+                    onClick={() => {
+                      setConfigProveedorId(prov.id);
+                      setConfigGuardado(false);
+                    }}
+                    style={{
+                      textAlign: "left",
+                      cursor: "pointer",
+                      borderRadius: 10,
+                      padding: "12px 14px",
+                      border: seleccionado ? "2px solid var(--green-700)" : "1px solid var(--line)",
+                      background: seleccionado ? "var(--green-100)" : "var(--surface)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 4,
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                      <strong style={{ fontSize: 13, color: "var(--green-950)" }}>{prov.nombre}</strong>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          fontWeight: 800,
+                          padding: "2px 8px",
+                          borderRadius: 10,
+                          background: prov.color,
+                          color: "#fff",
+                          textTransform: "uppercase",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {prov.perfil}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: 11, color: "var(--muted)" }}>{prov.descripcion}</span>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, fontSize: 12, marginTop: 4, color: "var(--ink-soft)" }}>
+                      <span>
+                        Precio unit.: <strong style={{ color: "var(--green-900)" }}>${precioProv.toLocaleString("es-CL")}</strong>
+                      </span>
+                      <span>
+                        Entrega: <strong style={{ color: "var(--green-900)" }}>{prov.entregaLegible}</strong>
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+                marginTop: 18,
+                padding: 16,
+                background: "#f4f7f4",
+                borderRadius: 10,
+                border: "1px solid var(--line-soft)",
+              }}
+            >
+              <div>
+                <small style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Precio Total</small>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "var(--green-900)" }}>${totalConfig.toLocaleString("es-CL")}</div>
+                <small style={{ fontSize: 11, color: "var(--muted)" }}>
+                  {cantidadConfig} un. × ${precioUnitarioConfig.toLocaleString("es-CL")}
+                </small>
+              </div>
+              <div>
+                <small style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700, textTransform: "uppercase" }}>Tiempo de Entrega</small>
+                <div style={{ fontSize: 18, fontWeight: 800, color: "var(--green-900)" }}>{proveedorConfig.entregaLegible}</div>
+                <small style={{ fontSize: 11, color: "var(--muted)" }}>{proveedorConfig.nombre}</small>
+              </div>
+            </div>
+
+            {configGuardado && (
+              <div
+                style={{
+                  marginTop: 14,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 14px",
+                  background: "var(--green-100)",
+                  border: "1px solid #c4dec9",
+                  borderRadius: 8,
+                  color: "var(--green-950)",
+                  fontSize: 12,
+                  fontWeight: 650,
+                }}
+              >
+                <CheckCircle2 size={16} color="var(--green-700)" /> Cambios guardados. Selección mantenida.
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={reiniciarConfiguracionCompra}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 16px",
+                  borderRadius: 6,
+                  border: "1px solid var(--line)",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 650,
+                  color: "var(--ink-soft)",
+                }}
+              >
+                <RotateCcw size={14} /> Reiniciar
+              </button>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setConfigPurchase(null)}
+                  style={{
+                    padding: "8px 16px",
+                    borderRadius: 6,
+                    border: "1px solid var(--line)",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 650,
+                    color: "var(--ink-soft)",
+                  }}
+                >
+                  Salir
+                </button>
+                <button
+                  type="button"
+                  onClick={guardarConfiguracionCompra}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "8px 18px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: "var(--green-700)",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    fontSize: 13,
+                  }}
+                >
+                  <Save size={14} /> Guardar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: CONFIRMACIÓN DE ORDEN DE COMPRA */}
+      {confirmPurchase && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(10, 35, 25, 0.6)",
+            display: "grid",
+            placeItems: "center",
+            zIndex: 60,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "var(--surface)",
+              borderRadius: 14,
+              padding: 24,
+              width: "min(420px, 100%)",
+              boxShadow: "var(--shadow-lg)",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 52,
+                height: 52,
+                borderRadius: "50%",
+                background: "var(--green-100)",
+                color: "var(--green-800)",
+                marginBottom: 12,
+              }}
+            >
+              <ShoppingCart size={24} />
+            </div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, margin: "0 0 8px 0", color: "var(--green-950)" }}>
+              ¿Desea confirmar esta orden de compra?
+            </h3>
+            <p style={{ fontSize: 12, color: "var(--muted)", margin: "0 0 20px 0" }}>
+              Orden #CMP-{confirmPurchase.id} · {confirmPurchase.proveedorNombre || `Proveedor #${confirmPurchase.proveedorId}`} · $
+              {confirmPurchase.total.toLocaleString("es-CL")}
+            </p>
+            <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setConfirmPurchase(null)}
+                style={{
+                  padding: "8px 18px",
+                  borderRadius: 6,
+                  border: "1px solid var(--line)",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 650,
+                  color: "var(--ink-soft)",
+                }}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmarOrdenCompra}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "8px 20px",
+                  borderRadius: 6,
+                  border: "none",
+                  background: "var(--green-700)",
+                  color: "#fff",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  fontSize: 13,
+                }}
+              >
+                <CheckCircle2 size={15} /> Confirmar
+              </button>
+            </div>
           </div>
         </div>
       )}
