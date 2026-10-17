@@ -19,6 +19,6 @@ test("portada institucional y rutas públicas", { skip: !origin && "Configura TE
 });
 
 test("consulta rechaza datos inválidos sin guardar", { skip: !origin }, async () => {
-  const response = await fetch(new URL("/api/consultas", origin), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "", email: "inválido", message: "" }) });
+  const response = await fetch(new URL("/api/bff/consultas", origin), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ nombreCliente: "", correoContacto: "inválido", mensaje: "", origen: "CONTACTO_HOME" }) });
   assert.equal(response.status, 400);
 });

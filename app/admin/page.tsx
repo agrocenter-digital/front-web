@@ -17,6 +17,7 @@ import {
   Filter,
   Layers,
   Leaf,
+  Mail,
   Network,
   Package,
   Plus,
@@ -39,6 +40,7 @@ import {
 import { AuthSession, isUserAdmin, readAuthSession } from "@/lib/cognito";
 import { apiRequest } from "@/lib/api";
 import MessagingAdmin from "./components/MessagingAdmin";
+import ConsultasB2BAdmin from "./components/ConsultasB2BAdmin";
 
 type ApiEndpoint = {
   id: string;
@@ -337,7 +339,7 @@ const fallbackInitialPurchases: PurchaseAdmin[] = [
 
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "mensajeria">("inventory");
+  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "mensajeria" | "consultas">("inventory");
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -1233,6 +1235,27 @@ export default function AdminPage() {
               <Network size={16} />
               <span>Mensajería</span>
             </button>
+
+            <button
+              onClick={() => setActiveTab("consultas")}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "8px 14px",
+                borderRadius: 8,
+                fontSize: 13,
+                fontWeight: 650,
+                border: "none",
+                cursor: "pointer",
+                background: activeTab === "consultas" ? "var(--green-800)" : "transparent",
+                color: activeTab === "consultas" ? "#fff" : "var(--ink-soft)",
+                transition: "all 0.15s",
+              }}
+            >
+              <Mail size={16} />
+              <span>Consultas B2B</span>
+            </button>
           </div>
         </div>
       </header>
@@ -1440,6 +1463,9 @@ export default function AdminPage() {
 
         {/* TAB: ADMINISTRACIÓN DE MENSAJERÍA (KAFKA) */}
         {activeTab === "mensajeria" && <MessagingAdmin />}
+
+        {/* TAB: CONSULTAS Y COTIZACIONES B2B */}
+        {activeTab === "consultas" && <ConsultasB2BAdmin />}
 
         {/* TAB: VISOR MULTI-SERVICIO Y AUDITORÍA RDS (INVENTARIO / VENTAS / COMPRAS) */}
         {(activeTab === "inventory" || activeTab === "sales" || activeTab === "purchases") && (

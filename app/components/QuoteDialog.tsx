@@ -89,6 +89,10 @@ export default function QuoteDialog({
           <p>Demostración con producto ficticio. WhatsApp abrirá el mensaje para que elijas un destinatario; no se envía automáticamente y no se genera una compra.</p>
         ) : <InquiryForm
           disabled={!valid}
+          origin="PRODUCTO_MAYORISTA"
+          productName={product.name}
+          productSku={product.sku}
+          quantity={valid ? Number(quantity) : undefined}
           initialMessage={valid ? quoteMessage(product, Number(quantity)) : ""}
         />}
       </section>

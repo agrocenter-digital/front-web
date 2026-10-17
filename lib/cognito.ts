@@ -2,6 +2,7 @@ export type AuthSession = {
   accessToken: string;
   idToken?: string;
   name: string;
+  email?: string;
   role: string;
   demo?: boolean;
   groups?: string[];
@@ -74,6 +75,7 @@ export function createDemoSession(): AuthSession {
   const session: AuthSession = {
     accessToken: "demo-access-token",
     name: "Camila Muñoz",
+    email: "camila@agrocenter.cl",
     role: "ADMIN",
     demo: true,
     groups: ["ADMIN"],
@@ -231,6 +233,7 @@ export async function completeCognitoSignIn(): Promise<AuthSession | null> {
         accessToken: tokens.access_token,
         idToken: tokens.id_token,
         name: String(claims.name ?? claims.email ?? "Usuario AgroCenter"),
+        email: claims.email ? String(claims.email) : undefined,
         role: hasAdminGroup ? "ADMIN" : String(groups[0] ?? "Usuario operativo"),
         groups,
       };
