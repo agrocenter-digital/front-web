@@ -68,6 +68,86 @@ export function readAuthSession(): AuthSession | null {
   }
 }
 
+export function persistAuthSession(session: AuthSession) {
+  if (typeof window === "undefined") return;
+  const serialized = JSON.stringify(session);
+  sessionStorage.setItem(SESSION_KEY, serialized);
+  if (typeof localStorage !== "undefined") {
+    localStorage.setItem(SESSION_KEY, serialized);
+  }
+}
+
+const HANDOFF_PARAMS = ["token", "access_token", "idToken", "id_token", "name", "email", "role"];
+
+function isUsableToken(token?: string) {
+  if (!token) return false;
+  const claims = decodeClaims(token);
+  // Si el proveedor entrega tokens opacos (sin exp) se acepta el valor tal cual.
+  return typeof claims.exp !== "number" || claims.exp * 1000 > Date.now();
+}
+
+/**
+ * Adopta la sesión enviada desde otro entorno (V1/V2) a través de la URL.
+ *
+ * El token viaja como `?token=...` (y opcionalmente `idToken`, `name`, `email`,
+ * `role`) para que el administrador no tenga que volver a iniciar sesión. Una vez
+ * persistida la sesión se limpia la URL para no dejar credenciales en el historial.
+ */
+export function adoptSessionFromUrl(): AuthSession | null {
+  if (typeof window === "undefined") return null;
+
+  const url = new URL(window.location.href);
+  const query = new URLSearchParams(url.search);
+  const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
+  const param = (key: string) => query.get(key) ?? hash.get(key);
+
+  const token = param("token") ?? param("access_token");
+  const idToken = param("idToken") ?? param("id_token") ?? undefined;
+  if (!token) return null;
+
+  const claims = decodeClaims(idToken ?? token);
+  const groups = Array.isArray(claims["cognito:groups"])
+    ? (claims["cognito:groups"] as unknown[]).filter((group): group is string => typeof group === "string")
+    : [];
+  const roleFromGroups = groups.some((group) => {
+    const value = group.toUpperCase();
+    return value === "ADMIN" || value === "ROLE_ADMIN";
+  })
+    ? "ADMIN"
+    : groups[0];
+
+  const session: AuthSession = {
+    accessToken: token,
+    idToken,
+    name: param("name") || String(claims.name ?? claims.email ?? "Usuario AgroCenter"),
+    email: param("email") || (claims.email ? String(claims.email) : undefined),
+    role: param("role") || roleFromGroups || "Usuario operativo",
+    demo: false,
+    groups,
+  };
+
+  // La credencial se retira de la URL incluso si resulta inválida o expirada.
+  HANDOFF_PARAMS.forEach((key) => query.delete(key));
+  url.search = query.toString();
+  if (HANDOFF_PARAMS.some((key) => hash.has(key))) {
+    HANDOFF_PARAMS.forEach((key) => hash.delete(key));
+    url.hash = hash.toString();
+  }
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+
+  if (!isUsableToken(session.accessToken) || (session.idToken && !isUsableToken(session.idToken))) {
+    return null;
+  }
+
+  try {
+    persistAuthSession(session);
+  } catch {
+    // Si el navegador bloquea el almacenamiento, la sesión no se conserva.
+  }
+
+  return session;
+}
+
 export function createDemoSession(): AuthSession {
   if (process.env.NODE_ENV !== "development") {
     throw new Error("El modo demo no está disponible en producción.");

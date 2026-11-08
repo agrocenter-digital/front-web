@@ -37,10 +37,11 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { AuthSession, isUserAdmin, readAuthSession } from "@/lib/cognito";
+import { AuthSession, adoptSessionFromUrl, isUserAdmin, readAuthSession } from "@/lib/cognito";
 import { apiRequest } from "@/lib/api";
 import MessagingAdmin from "./components/MessagingAdmin";
 import ConsultasB2BAdmin from "./components/ConsultasB2BAdmin";
+import EnvironmentSwitcher from "./components/EnvironmentSwitcher";
 
 type ApiEndpoint = {
   id: string;
@@ -397,7 +398,8 @@ export default function AdminPage() {
   const [copySuccess, setCopySuccess] = useState(false);
 
   useEffect(() => {
-    const currentSession = readAuthSession();
+    // Si llegamos desde V1/V2 con ?token=..., se adopta la sesión antes de consultar.
+    const currentSession = adoptSessionFromUrl() ?? readAuthSession();
     setSession(currentSession);
     loadInventory(currentSession);
     loadSales();
@@ -1027,13 +1029,40 @@ export default function AdminPage() {
         style={{
           background: "var(--surface)",
           borderBottom: "1px solid var(--line)",
-          padding: "16px 24px",
           position: "sticky",
           top: 0,
           zIndex: 30,
         }}
       >
-        <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <div style={{ background: "var(--green-950)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+          <div
+            style={{
+              maxWidth: 1200,
+              margin: "0 auto",
+              padding: "5px 24px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <span
+              style={{
+                color: "#d9e9df",
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+              }}
+            >
+              Entorno de administración
+            </span>
+            <EnvironmentSwitcher />
+          </div>
+        </div>
+
+        <div style={{ padding: "16px 24px" }}>
+          <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Link
               href="/"
@@ -1256,6 +1285,7 @@ export default function AdminPage() {
               <Mail size={16} />
               <span>Consultas B2B</span>
             </button>
+          </div>
           </div>
         </div>
       </header>

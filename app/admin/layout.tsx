@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { readAuthSession } from "@/lib/cognito";
+import { adoptSessionFromUrl, readAuthSession } from "@/lib/cognito";
 import { apiRequest } from "@/lib/api";
 import { verifyAdminAccess } from "@/lib/admin-access";
 
@@ -12,7 +12,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     const controller = new AbortController();
     let active = true;
     const timeout = window.setTimeout(() => controller.abort(), 10000);
-    verifyAdminAccess(readAuthSession(), () => apiRequest("/api/bff/admin/dashboard", {
+    verifyAdminAccess(adoptSessionFromUrl() ?? readAuthSession(), () => apiRequest("/api/bff/admin/dashboard", {
       signal: controller.signal,
       cache: "no-store",
     })).then((allowed) => {
