@@ -39,6 +39,7 @@ import {
   signOut,
 } from "@/lib/cognito";
 import { apiRequest } from "@/lib/api";
+import { redirectToEnvironmentIfRequested } from "@/lib/environments";
 
 const money = new Intl.NumberFormat("es-CL", {
   style: "currency",
@@ -98,6 +99,9 @@ export default function AgroCenterApp() {
         if (active) {
           setSession(active);
           setAuthError("");
+          // Si el usuario pidió un entorno (?env=v1|v2), el login se completa
+          // redirigiendo a la EC2 con el access token en el fragmento.
+          redirectToEnvironmentIfRequested(active);
         }
       })
       .catch((error: unknown) => {
@@ -105,6 +109,7 @@ export default function AgroCenterApp() {
         if (active) {
           setSession(active);
           setAuthError("");
+          redirectToEnvironmentIfRequested(active);
         } else {
           setAuthError(
             error instanceof Error

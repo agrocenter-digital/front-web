@@ -77,7 +77,7 @@ export function persistAuthSession(session: AuthSession) {
   }
 }
 
-const HANDOFF_PARAMS = ["token", "access_token", "idToken", "id_token", "name", "email", "role"];
+const HANDOFF_PARAMS = ["token", "accessToken", "access_token", "jwt", "idToken", "id_token", "name", "email", "role"];
 
 function isUsableToken(token?: string) {
   if (!token) return false;
@@ -101,7 +101,7 @@ export function adoptSessionFromUrl(): AuthSession | null {
   const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
   const param = (key: string) => query.get(key) ?? hash.get(key);
 
-  const token = param("token") ?? param("access_token");
+  const token = param("token") ?? param("accessToken") ?? param("access_token") ?? param("jwt");
   const idToken = param("idToken") ?? param("id_token") ?? undefined;
   if (!token) return null;
 

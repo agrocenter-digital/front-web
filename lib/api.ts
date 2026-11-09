@@ -19,8 +19,9 @@ export async function apiRequest<T>(
     ...(options.headers as Record<string, string>),
   };
 
-  // Se prioriza el accessToken requerido por los Resource Servers (CognitoTokenUseValidator exige token_use: "access")
-  const token = session?.accessToken || session?.idToken;
+  // El Resource Server del BFF valida exclusivamente access tokens de Cognito
+  // (`token_use=access`). Nunca se envía el id_token como Bearer.
+  const token = session?.accessToken;
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
