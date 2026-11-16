@@ -18,7 +18,6 @@ import {
   Layers,
   Leaf,
   Mail,
-  Network,
   Package,
   Plus,
   RefreshCw,
@@ -39,7 +38,6 @@ import {
 } from "lucide-react";
 import { AuthSession, adoptSessionFromUrl, isUserAdmin, readAuthSession } from "@/lib/cognito";
 import { apiRequest } from "@/lib/api";
-import MessagingAdmin from "./components/MessagingAdmin";
 import ConsultasB2BAdmin from "./components/ConsultasB2BAdmin";
 import EnvironmentSwitcher from "./components/EnvironmentSwitcher";
 import ObservabilidadAdmin from "./components/ObservabilidadAdmin";
@@ -341,7 +339,7 @@ const fallbackInitialPurchases: PurchaseAdmin[] = [
 
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "mensajeria" | "consultas" | "observabilidad">("inventory");
+  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "consultas" | "observabilidad">("inventory");
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -1246,27 +1244,6 @@ export default function AdminPage() {
             </button>
 
             <button
-              onClick={() => setActiveTab("mensajeria")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "mensajeria" ? "var(--green-800)" : "transparent",
-                color: activeTab === "mensajeria" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Network size={16} />
-              <span>Kafka (transición)</span>
-            </button>
-
-            <button
               onClick={() => setActiveTab("observabilidad")}
               style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
                 fontSize: 13, fontWeight: 650, border: "none", cursor: "pointer",
@@ -1501,9 +1478,6 @@ export default function AdminPage() {
             </div>
           </div>
         )}
-
-        {/* TAB: ADMINISTRACIÓN DE MENSAJERÍA (KAFKA) */}
-        {activeTab === "mensajeria" && <MessagingAdmin />}
 
         {activeTab === "observabilidad" && <ObservabilidadAdmin />}
 
