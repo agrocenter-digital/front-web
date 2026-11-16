@@ -9,7 +9,19 @@ export type Evento = {
 };
 export type Incidente = { id: string; stream: string; shard: string; sequenceNumber: string; tipoError: string; createdAt: Fecha };
 export type Pagina<T> = { elementos: T[]; pagina: number; tamano: number; hayMas: boolean };
-export type EstadoConsumidor = { estado: "DESACTIVADO" | "DESCONOCIDO" | "LECTURAS_RECIENTES" | "NO_SALUDABLE" };
+export type LecturaShard = {
+  stream: string | null; aplicacion: string; shard: string | null; lagMs: number | null;
+  antiguedadMs: number | null; lecturaAntigua: boolean; reintentando: boolean; consumidorActivo: boolean;
+};
+// Opcional mientras los servicios anteriores sigan desplegados.
+export type EstadoConsumidor = { estado: "DESACTIVADO" | "DESCONOCIDO" | "LECTURAS_RECIENTES" | "NO_SALUDABLE"; lecturas?: LecturaShard[] };
+
+export function duracionMs(valor: number | null | undefined): string {
+  if (typeof valor !== "number" || !Number.isFinite(valor) || valor < 0) return "No disponible";
+  if (valor < 1000) return `${Math.round(valor)} ms`;
+  if (valor < 60000) return `${(valor / 1000).toFixed(1)} s`;
+  return `${(valor / 60000).toFixed(1)} min`;
+}
 
 export function formatearFecha(valor: Fecha | null | undefined, soloDia = false): string {
   if (Array.isArray(valor)) {

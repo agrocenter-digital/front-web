@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { consultarObservabilidad, formatearFecha } from "../lib/observabilidad.ts";
+import { consultarObservabilidad, duracionMs, formatearFecha } from "../lib/observabilidad.ts";
+
+test("formatea lag sin convertir datos ausentes a cero", () => {
+  assert.equal(duracionMs(null), "No disponible");
+  assert.equal(duracionMs(-1), "No disponible");
+  assert.equal(duracionMs(0), "0 ms");
+  assert.equal(duracionMs(1500), "1.5 s");
+  assert.equal(duracionMs(120000), "2.0 min");
+});
 
 test("formatea fechas de Jackson y de ISO en UTC sin concatenar arreglos", () => {
   assert.equal(formatearFecha([2026, 10, 18], true), "2026-10-18");

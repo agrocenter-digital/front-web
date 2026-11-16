@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { consultarObservabilidad, formatearFecha, type Resumen, type Evento, type Incidente, type Pagina, type EstadoConsumidor } from "@/lib/observabilidad";
+import { consultarObservabilidad, duracionMs, formatearFecha, type Resumen, type Evento, type Incidente, type Pagina, type EstadoConsumidor } from "@/lib/observabilidad";
 
 export default function ObservabilidadAdmin() {
   const [resumen, setResumen] = useState<Resumen | null>(null);
@@ -41,8 +41,18 @@ export default function ObservabilidadAdmin() {
       <h3>Lectura local de consumidores</h3>
       <p>Señales de cada instancia de analíticas y auditoría, no del estado global de Kinesis ni confirmación de eventos nuevos.</p>
       <ul className="obs-list">{(["analiticas", "auditoria"] as const).map(servicio => <li key={servicio}>
-        {servicio === "analiticas" ? "Analíticas" : "Auditoría"}: {consumidores[servicio]?.estado ?? (cargando ? "consultando…" : "no disponible")}
+        <strong>{servicio === "analiticas" ? "Analíticas" : "Auditoría"}</strong>: {consumidores[servicio]?.estado ?? (cargando ? "consultando…" : "no disponible")}
+        {consumidores[servicio]?.lecturas?.length ? <div className="obs-grid" style={{ marginTop: 12 }}>
+          {consumidores[servicio]!.lecturas!.map(lectura => <div className="obs-metric" key={`${lectura.aplicacion}-${lectura.shard ?? "sin-shard"}`}>
+            <strong style={{ fontSize: 13, overflowWrap: "anywhere" }}>{lectura.stream ?? "Stream no disponible"}</strong>
+            <span>{lectura.shard ?? "Sin shard asignado"}</span>
+            <p>Retraso KCL observado: <strong style={{ display: "inline", fontSize: 14 }}>{duracionMs(lectura.lagMs)}</strong></p>
+            <span>Antigüedad al consultar: {duracionMs(lectura.antiguedadMs)}</span>
+            <span>{!lectura.consumidorActivo ? "Consumidor detenido o cerrando" : lectura.reintentando ? "Procesamiento en reintento" : lectura.lecturaAntigua ? "Lectura antigua o no disponible" : "Lectura reciente"}</span>
+          </div>)}
+        </div> : consumidores[servicio] && <p>No hay detalle local de shards disponible.</p>}
       </li>)}</ul>
+      <p>El retraso es la última medición informada por KCL a esta instancia, no un conteo de mensajes ni una garantía de procesamiento. La antigüedad corresponde al momento de consultar; actualiza para obtener datos nuevos. Un valor antiguo no demuestra que el consumidor esté al día.</p>
     </div>
     <div className="obs-card">
       <h3>Resumen de eventos</h3>
