@@ -41,6 +41,7 @@ import { apiRequest } from "@/lib/api";
 import ConsultasB2BAdmin from "./components/ConsultasB2BAdmin";
 import EnvironmentSwitcher from "./components/EnvironmentSwitcher";
 import ObservabilidadAdmin from "./components/ObservabilidadAdmin";
+import "./admin.css";
 
 type ApiEndpoint = {
   id: string;
@@ -170,7 +171,7 @@ const monitoredEndpoints: ApiEndpoint[] = [
     endpoint: "/actuator/health",
     method: "GET",
     expectedStatus: 200,
-    description: "Salud del contenedor BFF en AWS ECS Fargate",
+    description: "Estado HTTP del BFF desplegado en EC2",
   },
   {
     id: "bff-catalogo",
@@ -210,64 +211,6 @@ const monitoredEndpoints: ApiEndpoint[] = [
   },
 ];
 
-const fallbackInitialProducts: ProductAdmin[] = [
-  {
-    id: 1,
-    sku: "SEM-MAIZ-001",
-    nombre: "Semillas de Maíz Híbrido 25 kg",
-    categoria: "Semillas",
-    descripcion: "Semillas de maíz de alto rendimiento para siembra en zonas templadas.",
-    precioVenta: 45990,
-    stockActual: 50,
-    stockMinimo: 10,
-    activo: true,
-  },
-  {
-    id: 2,
-    sku: "SEM-TRIG-002",
-    nombre: "Semilla de Trigo Certificada 40 kg",
-    categoria: "Semillas",
-    descripcion: "Trigo de primavera de ciclo intermedio con alta resistencia a enfermedades.",
-    precioVenta: 38990,
-    stockActual: 40,
-    stockMinimo: 10,
-    activo: true,
-  },
-  {
-    id: 3,
-    sku: "FERT-NPK-001",
-    nombre: "Fertilizante NPK Granulado 25 kg",
-    categoria: "Fertilizantes",
-    descripcion: "Mezcla equilibrada para apoyar el desarrollo vegetativo.",
-    precioVenta: 31990,
-    stockActual: 60,
-    stockMinimo: 15,
-    activo: true,
-  },
-  {
-    id: 4,
-    sku: "FERT-UREA-002",
-    nombre: "Urea Agrícola 46% Nitrógeno 50 kg",
-    categoria: "Fertilizantes",
-    descripcion: "Fertilizante nitrogenado de alta concentración.",
-    precioVenta: 34990,
-    stockActual: 35,
-    stockMinimo: 10,
-    activo: true,
-  },
-  {
-    id: 5,
-    sku: "HERR-TIJ-001",
-    nombre: "Tijeras de Podar Profesional Bypass",
-    categoria: "Herramientas",
-    descripcion: "Corte limpio y preciso con hoja de acero forjado.",
-    precioVenta: 18990,
-    stockActual: 30,
-    stockMinimo: 5,
-    activo: true,
-  },
-];
-
 const quickRequestEndpoints = [
   { label: "GET /api/bff/catalogo (Público)", endpoint: "/api/bff/catalogo", method: "GET" },
   { label: "GET /api/bff/admin/inventario (Admin)", endpoint: "/api/bff/admin/inventario", method: "GET" },
@@ -278,68 +221,11 @@ const quickRequestEndpoints = [
   { label: "GET /actuator/health (BFF)", endpoint: "/actuator/health", method: "GET" },
 ];
 
-const fallbackInitialSales: SaleAdmin[] = [
-  {
-    id: 1,
-    clienteId: "649894e8-2011-70ec-6e8a-35a6f59c3c14",
-    fechaCreacion: new Date().toISOString(),
-    estado: "CONFIRMADA",
-    subtotal: 91980,
-    total: 91980,
-    items: [
-      {
-        productoId: 1,
-        nombre: "Semillas de Maíz Híbrido 25 kg",
-        cantidad: 2,
-        precioUnitario: 45990,
-        subtotal: 91980,
-      },
-    ],
-  },
-];
-
-const fallbackInitialPurchases: PurchaseAdmin[] = [
-  {
-    id: 1,
-    proveedorId: 101,
-    proveedorNombre: "AgroQuímica del Sur S.A.",
-    fechaCreacion: new Date(Date.now() - 86400000).toISOString(),
-    estado: "COMPLETADA",
-    total: 450000,
-    detalles: [
-      {
-        id: 1,
-        productoId: 3,
-        nombre: "Fertilizante NPK Granulado 25 kg",
-        cantidad: 25,
-        precioUnitario: 18000,
-        subtotal: 450000,
-      },
-    ],
-  },
-  {
-    id: 2,
-    proveedorId: 101,
-    proveedorNombre: "AgroInsumos Chile",
-    fechaCreacion: new Date(Date.now() - 3600000).toISOString(),
-    estado: "PENDIENTE",
-    total: 183960,
-    detalles: [
-      {
-        id: 2,
-        productoId: 1,
-        nombre: "Semillas de Maíz Híbrido 25 kg",
-        cantidad: 4,
-        precioUnitario: 45990,
-        subtotal: 183960,
-      },
-    ],
-  },
-];
-
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
   const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "consultas" | "observabilidad">("inventory");
+
+  const [loadErrors, setLoadErrors] = useState<Record<string, boolean>>({});
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -350,18 +236,18 @@ export default function AdminPage() {
   const [isPingingAll, setIsPingingAll] = useState(false);
 
   // Inventory Manager State (ms-inventario)
-  const [products, setProducts] = useState<ProductAdmin[]>(fallbackInitialProducts);
+  const [products, setProducts] = useState<ProductAdmin[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(false);
   const [productFeedback, setProductFeedback] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingProduct, setEditingProduct] = useState<ProductAdmin | null>(null);
 
   // Sales State (ms-ventas)
-  const [sales, setSales] = useState<SaleAdmin[]>(fallbackInitialSales);
+  const [sales, setSales] = useState<SaleAdmin[]>([]);
   const [isLoadingSales, setIsLoadingSales] = useState(false);
 
   // Purchases State (ms-compras)
-  const [purchases, setPurchases] = useState<PurchaseAdmin[]>(fallbackInitialPurchases);
+  const [purchases, setPurchases] = useState<PurchaseAdmin[]>([]);
   const [isLoadingPurchases, setIsLoadingPurchases] = useState(false);
 
   // Configuración interactiva de compras PENDIENTES
@@ -453,7 +339,6 @@ export default function AdminPage() {
         ...prev,
         [endpointConfig.id]: {
           status: "offline",
-          statusCode: 502,
           latencyMs,
           error: err instanceof Error ? err.message : "Error de red o timeout",
           lastChecked: new Date().toLocaleTimeString(),
@@ -483,7 +368,7 @@ export default function AdminPage() {
         data = await apiRequest<any>("/api/bff/inventario");
       }
       const items = Array.isArray(data) ? data : data?.content || data?.contenido || [];
-      if (items.length > 0) {
+      {
         const mapped: ProductAdmin[] = items.map((p: any) => ({
           id: p.id,
           sku: p.sku || `SKU-${p.id}`,
@@ -496,9 +381,11 @@ export default function AdminPage() {
           activo: p.activo ?? true,
         }));
         setProducts(mapped);
+        setLoadErrors(prev => ({ ...prev, inventory: false }));
       }
     } catch (err: unknown) {
-      console.warn("Utilizando datos iniciales de inventario debido a:", err);
+      console.warn("No se pudo consultar inventario:", err);
+      setLoadErrors(prev => ({ ...prev, inventory: true }));
     } finally {
       setIsLoadingProducts(false);
     }
@@ -515,7 +402,7 @@ export default function AdminPage() {
         data = await apiRequest<any>("/api/bff/ventas");
       }
       const list = Array.isArray(data) ? data : data?.contenido || data?.content || [];
-      if (list.length > 0) {
+      {
         const mapped: SaleAdmin[] = list.map((s: any) => ({
           id: s.id,
           clienteId: s.clienteId || "Cliente Registrado",
@@ -533,9 +420,11 @@ export default function AdminPage() {
           })),
         }));
         setSales(mapped);
+        setLoadErrors(prev => ({ ...prev, sales: false }));
       }
     } catch (err: unknown) {
-      console.warn("Utilizando datos locales de ventas debido a:", err);
+      console.warn("No se pudo consultar ventas:", err);
+      setLoadErrors(prev => ({ ...prev, sales: true }));
     } finally {
       setIsLoadingSales(false);
     }
@@ -552,7 +441,7 @@ export default function AdminPage() {
         data = await apiRequest<any>("/api/bff/compras");
       }
       const list = Array.isArray(data) ? data : data?.contenido || data?.content || [];
-      if (list.length > 0) {
+      {
         const mapped: PurchaseAdmin[] = list.map((c: any) => {
           const proveedorId = c.proveedorId || 101;
           const perfil = proveedoresCompra.find((prov) => prov.id === proveedorId);
@@ -575,9 +464,11 @@ export default function AdminPage() {
           };
         });
         setPurchases(mapped);
+        setLoadErrors(prev => ({ ...prev, purchases: false }));
       }
     } catch (err: unknown) {
-      console.warn("Utilizando datos locales de compras debido a:", err);
+      console.warn("No se pudo consultar compras:", err);
+      setLoadErrors(prev => ({ ...prev, purchases: true }));
     } finally {
       setIsLoadingPurchases(false);
     }
@@ -829,21 +720,7 @@ export default function AdminPage() {
       setNewStock(20);
       setNewStockMinimo(5);
     } catch (err: unknown) {
-      // En modo demostrativo / fallback
-      const localProduct: ProductAdmin = {
-        id: Date.now(),
-        sku: payload.sku,
-        nombre: payload.nombre,
-        categoria: payload.categoria,
-        descripcion: payload.descripcion,
-        precioVenta: payload.precioVenta,
-        stockActual: Number(newStock),
-        stockMinimo: payload.stockMinimo,
-        activo: true,
-      };
-      setProducts((prev) => [localProduct, ...prev]);
-      setShowCreateModal(false);
-      setProductFeedback(`Producto ${payload.sku} registrado localmente (BFF offline: ${err instanceof Error ? err.message : "Error"})`);
+      setProductFeedback(`No se pudo confirmar la creación de ${payload.sku}: ${err instanceof Error ? err.message : "error de conexión"}. Verifica el inventario antes de reintentar.`);
     } finally {
       setIsCreatingProduct(false);
     }
@@ -877,9 +754,7 @@ export default function AdminPage() {
       setProducts((prev) => prev.map((p) => (p.id === editingProduct.id ? updated : p)));
       setProductFeedback(`Producto ${editingProduct.sku} actualizado correctamente.`);
     } catch {
-      // Modo fallback
-      setProducts((prev) => prev.map((p) => (p.id === editingProduct.id ? updated : p)));
-      setProductFeedback(`Producto ${editingProduct.sku} modificado localmente.`);
+      setProductFeedback(`No se pudo confirmar la actualización de ${editingProduct.sku}. Verifica el inventario antes de reintentar.`);
     } finally {
       setIsSavingEdit(false);
       setEditingProduct(null);
@@ -1023,269 +898,35 @@ export default function AdminPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--canvas)", color: "var(--ink)", fontFamily: "sans-serif" }}>
-      {/* Top Admin Navigation Header */}
-      <header
-        style={{
-          background: "var(--surface)",
-          borderBottom: "1px solid var(--line)",
-          position: "sticky",
-          top: 0,
-          zIndex: 30,
-        }}
-      >
-        <div style={{ background: "var(--green-950)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-          <div
-            style={{
-              maxWidth: 1200,
-              margin: "0 auto",
-              padding: "5px 24px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-            }}
-          >
-            <span
-              style={{
-                color: "#d9e9df",
-                fontSize: 10,
-                fontWeight: 700,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-              }}
-            >
-              Entorno de administración
-            </span>
-            <EnvironmentSwitcher />
-          </div>
-        </div>
-
-        <div style={{ padding: "16px 24px" }}>
-          <div style={{ maxWidth: 1200, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <Link
-              href="/"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 14px",
-                background: "var(--green-100)",
-                color: "var(--green-900)",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 700,
-                textDecoration: "none",
-                transition: "background 0.15s",
-              }}
-            >
-              <ArrowLeft size={16} />
-              <span>Volver a la Tienda / Modo Cliente</span>
-            </Link>
-
-            <div style={{ height: 24, width: 1, background: "var(--line)" }} />
-
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  width: 32,
-                  height: 32,
-                  display: "grid",
-                  placeItems: "center",
-                  background: "var(--lime)",
-                  color: "var(--green-950)",
-                  borderRadius: 8,
-                }}
-              >
-                <Leaf size={18} />
-              </span>
-              <div>
-                <strong style={{ fontSize: 16, color: "var(--green-900)", display: "flex", alignItems: "center", gap: 6 }}>
-                  AgroCenter Admin
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 800,
-                      background: "var(--green-800)",
-                      color: "#fff",
-                      padding: "2px 6px",
-                      borderRadius: 4,
-                      letterSpacing: 0.5,
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    Panel PostgreSQL & APIs
-                  </span>
-                </strong>
-                <small style={{ color: "var(--muted)", fontSize: 11, display: "block" }}>
-                  Operador: {session?.name || "Administrador Demo"} · Rol: {session?.role || "ADMIN"}
-                </small>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Tabs */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <button
-              onClick={() => {
-                setActiveTab("inventory");
-                setSearchQuery("");
-                setStatusFilter("ALL");
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "inventory" ? "var(--green-800)" : "transparent",
-                color: activeTab === "inventory" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Package size={16} />
-              <span>Inventario</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab("sales");
-                setSearchQuery("");
-                setStatusFilter("ALL");
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "sales" ? "var(--green-800)" : "transparent",
-                color: activeTab === "sales" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <ShoppingCart size={16} />
-              <span>Ventas</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setActiveTab("purchases");
-                setSearchQuery("");
-                setStatusFilter("ALL");
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "purchases" ? "var(--green-800)" : "transparent",
-                color: activeTab === "purchases" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Truck size={16} />
-              <span>Compras</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("apis")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "apis" ? "var(--green-800)" : "transparent",
-                color: activeTab === "apis" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Activity size={16} />
-              <span>Monitor APIs</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("console")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "console" ? "var(--green-800)" : "transparent",
-                color: activeTab === "console" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Terminal size={16} />
-              <span>Consola</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("observabilidad")}
-              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
-                fontSize: 13, fontWeight: 650, border: "none", cursor: "pointer",
-                background: activeTab === "observabilidad" ? "var(--green-800)" : "transparent",
-                color: activeTab === "observabilidad" ? "#fff" : "var(--ink-soft)" }}
-            >
-              <Activity size={16} /> <span>Analíticas y auditoría</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("consultas")}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "8px 14px",
-                borderRadius: 8,
-                fontSize: 13,
-                fontWeight: 650,
-                border: "none",
-                cursor: "pointer",
-                background: activeTab === "consultas" ? "var(--green-800)" : "transparent",
-                color: activeTab === "consultas" ? "#fff" : "var(--ink-soft)",
-                transition: "all 0.15s",
-              }}
-            >
-              <Mail size={16} />
-              <span>Consultas B2B</span>
-            </button>
-          </div>
-          </div>
-        </div>
+      <header className="admin-header">
+        <div className="admin-brand"><span className="admin-brand-icon"><Leaf size={20} /></span><div><strong>AgroCenter</strong><span>Centro de administración</span></div></div>
+        <div className="admin-header-actions"><EnvironmentSwitcher /><Link href="/" className="admin-store-link"><ArrowLeft size={16} /> Volver a la tienda</Link></div>
       </header>
-
-      {/* Main Content Body */}
-      <main style={{ maxWidth: 1200, margin: "24px auto", padding: "0 20px" }}>
+      <div className="admin-layout">
+        <aside className="admin-sidebar">
+          <div className="admin-sidebar-heading">ESPACIO DE TRABAJO</div>
+          <nav aria-label="Secciones de administración" className="admin-nav">
+            {([
+              { id: "inventory", label: "Inventario", icon: Package },
+              { id: "sales", label: "Ventas", icon: ShoppingCart },
+              { id: "purchases", label: "Compras", icon: Truck },
+              { id: "consultas", label: "Consultas B2B", icon: Mail },
+              { id: "observabilidad", label: "Analíticas y auditoría", icon: Layers },
+              { id: "apis", label: "Monitor de APIs", icon: Activity },
+              { id: "console", label: "Consola", icon: Terminal },
+            ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`admin-nav-item ${activeTab === id ? "is-active" : ""}`} aria-current={activeTab === id ? "page" : undefined} onClick={() => { setActiveTab(id); setSearchQuery(""); setStatusFilter("ALL"); }}><Icon size={18} /><span>{label}</span></button>)}
+          </nav>
+          <div className="admin-sidebar-note"><ShieldCheck size={17} /><div><strong>Acceso administrativo</strong><span>{session?.name || "Sesión autorizada"}</span></div></div>
+        </aside>
+        <main className="admin-main">
+          <div className="admin-page-intro"><div><span className="admin-eyebrow">AGROCENTER DIGITAL / ADMINISTRACIÓN</span><h1>Centro de operaciones</h1><p>Gestiona el negocio y consulta la actividad de los servicios desde un solo lugar.</p></div></div>
+          {loadErrors[activeTab] && <div className="admin-warning" role="alert"><AlertTriangle size={18} /><span>No se pudo actualizar esta sección. Los datos mostrados podrían estar desactualizados; vuelve a consultar antes de tomar decisiones.</span></div>}
         {/* Feedback Alert */}
         {productFeedback && (
-          <div
+          <div role="status"
             style={{
               padding: "12px 18px",
-              background: "var(--green-100)",
+              background: productFeedback.startsWith("No se pudo") || productFeedback.includes("problema") ? "#fff8e8" : "var(--green-100)",
               border: "1px solid #c4dec9",
               borderRadius: 8,
               color: "var(--green-950)",
@@ -1298,7 +939,7 @@ export default function AdminPage() {
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <CheckCircle2 size={18} color="var(--green-700)" />
+              {productFeedback.startsWith("No se pudo") || productFeedback.includes("problema") ? <AlertTriangle size={18} color="#76531a" /> : <CheckCircle2 size={18} color="var(--green-700)" />}
               <span>{productFeedback}</span>
             </div>
             <button
@@ -1319,7 +960,7 @@ export default function AdminPage() {
                   Monitor de Conectividad y Microservicios
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-                  Prueba de conectividad HTTP en tiempo real hacia el router ALB y microservicios internos en AWS ECS Fargate.
+                  Comprueba respuestas HTTP a través del BFF. Un resultado exitoso no garantiza el estado completo de cada servicio.
                 </p>
               </div>
               <button
@@ -1405,7 +1046,7 @@ export default function AdminPage() {
                           {isError && <XCircle size={14} />}
                           {isLoading && <RefreshCw size={14} className="animate-spin" />}
                           <span>
-                            {isLoading ? "Ping..." : isOnline ? "Online (200)" : isError ? `Error ${res.statusCode || 502}` : "Sin probar"}
+                            {isLoading ? "Consultando…" : isOnline ? `HTTP ${res.statusCode}` : isError ? (res.statusCode ? `HTTP ${res.statusCode}` : "Error de conexión") : "Sin probar"}
                           </span>
                         </span>
                       </div>
@@ -1524,9 +1165,9 @@ export default function AdminPage() {
                     }}
                   >
                     <Server size={12} />
-                    {activeTab === "inventory" && "ms-inventario (ECS)"}
-                    {activeTab === "sales" && "ms-ventas (ECS)"}
-                    {activeTab === "purchases" && "ms-compras (ECS)"}
+                    {activeTab === "inventory" && "ms-inventario (EC2)"}
+                    {activeTab === "sales" && "ms-ventas (EC2)"}
+                    {activeTab === "purchases" && "ms-compras (EC2)"}
                   </span>
                 </div>
                 <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--green-950)", margin: 0 }}>
@@ -2478,7 +2119,8 @@ export default function AdminPage() {
             </div>
           </div>
         )}
-      </main>
+        </main>
+      </div>
 
       {/* MODAL: REGISTRAR NUEVO PRODUCTO */}
       {showCreateModal && (

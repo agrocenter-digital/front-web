@@ -97,6 +97,7 @@ export default function ConsultasB2BAdmin() {
         `/api/bff/admin/consultas${query}`,
       );
       setConsultas(data || []);
+      setError(null);
     } catch (failure) {
       setError((failure as Error).message);
     } finally {
@@ -262,7 +263,7 @@ export default function ConsultasB2BAdmin() {
                   <td colSpan={8} style={{ padding: 14, color: "var(--muted)", fontSize: 13 }}>
                     {isLoading
                       ? "Cargando consultas…"
-                      : "Aún no hay consultas B2B registradas."}
+                      : error ? "No se pudieron consultar las solicitudes." : "No hay consultas para el filtro seleccionado."}
                   </td>
                 </tr>
               )}
