@@ -42,6 +42,7 @@ import { apiRequest } from "@/lib/api";
 import MessagingAdmin from "./components/MessagingAdmin";
 import ConsultasB2BAdmin from "./components/ConsultasB2BAdmin";
 import EnvironmentSwitcher from "./components/EnvironmentSwitcher";
+import ObservabilidadAdmin from "./components/ObservabilidadAdmin";
 
 type ApiEndpoint = {
   id: string;
@@ -189,7 +190,7 @@ const monitoredEndpoints: ApiEndpoint[] = [
     endpoint: "/api/bff/inventario",
     method: "GET",
     expectedStatus: 200,
-    description: "Gestión completa de existencias en PostgreSQL RDS",
+    description: "Gestión completa de existencias en PostgreSQL",
   },
   {
     id: "bff-ventas",
@@ -340,7 +341,7 @@ const fallbackInitialPurchases: PurchaseAdmin[] = [
 
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "mensajeria" | "consultas">("inventory");
+  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "mensajeria" | "consultas" | "observabilidad">("inventory");
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState("");
@@ -966,7 +967,7 @@ export default function AdminPage() {
     }
   }
 
-  // Filtros dinámicos en tiempo real para las 3 tablas RDS
+  // Filtros dinámicos en tiempo real para las 3 tablas
   const q = searchQuery.trim().toLowerCase();
 
   const filteredProducts = products.filter((p) => {
@@ -1115,7 +1116,7 @@ export default function AdminPage() {
                       textTransform: "uppercase",
                     }}
                   >
-                    Panel RDS & APIs
+                    Panel PostgreSQL & APIs
                   </span>
                 </strong>
                 <small style={{ color: "var(--muted)", fontSize: 11, display: "block" }}>
@@ -1262,7 +1263,17 @@ export default function AdminPage() {
               }}
             >
               <Network size={16} />
-              <span>Mensajería</span>
+              <span>Kafka (transición)</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("observabilidad")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8,
+                fontSize: 13, fontWeight: 650, border: "none", cursor: "pointer",
+                background: activeTab === "observabilidad" ? "var(--green-800)" : "transparent",
+                color: activeTab === "observabilidad" ? "#fff" : "var(--ink-soft)" }}
+            >
+              <Activity size={16} /> <span>Analíticas y auditoría</span>
             </button>
 
             <button
@@ -1494,10 +1505,12 @@ export default function AdminPage() {
         {/* TAB: ADMINISTRACIÓN DE MENSAJERÍA (KAFKA) */}
         {activeTab === "mensajeria" && <MessagingAdmin />}
 
+        {activeTab === "observabilidad" && <ObservabilidadAdmin />}
+
         {/* TAB: CONSULTAS Y COTIZACIONES B2B */}
         {activeTab === "consultas" && <ConsultasB2BAdmin />}
 
-        {/* TAB: VISOR MULTI-SERVICIO Y AUDITORÍA RDS (INVENTARIO / VENTAS / COMPRAS) */}
+        {/* TAB: VISOR MULTI-SERVICIO (INVENTARIO / VENTAS / COMPRAS) */}
         {(activeTab === "inventory" || activeTab === "sales" || activeTab === "purchases") && (
           <div>
             {/* Service & Database Header */}
@@ -1548,7 +1561,7 @@ export default function AdminPage() {
                   {activeTab === "purchases" && "Auditoría de Órdenes de Abastecimiento"}
                 </h2>
                 <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4, marginBottom: 0 }}>
-                  {activeTab === "inventory" && "Control directo sobre el catálogo y stock persistido en Amazon RDS PostgreSQL."}
+                  {activeTab === "inventory" && "Control directo sobre el catálogo y stock persistido en PostgreSQL."}
                   {activeTab === "sales" && "Historial de transacciones de compra registradas por clientes autenticados."}
                   {activeTab === "purchases" && "Registro de compras a proveedores e insumos incorporados al centro logístico."}
                 </p>
@@ -1883,7 +1896,7 @@ export default function AdminPage() {
                     ? sales.length
                     : purchases.length}
                 </strong>{" "}
-                registros en tiempo real desde RDS
+                registros en tiempo real desde PostgreSQL
               </div>
 
               {(searchQuery || statusFilter !== "ALL") && (
@@ -2642,7 +2655,7 @@ export default function AdminPage() {
                     fontSize: 13,
                   }}
                 >
-                  {isCreatingProduct ? "Guardando..." : "Crear en RDS"}
+                  {isCreatingProduct ? "Guardando..." : "Crear producto"}
                 </button>
               </div>
             </form>

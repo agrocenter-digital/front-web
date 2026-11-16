@@ -269,7 +269,7 @@ export default function MessagingAdmin() {
             <Network size={20} /> Administración de Mensajería (Kafka)
           </h2>
           <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 4, marginBottom: 0 }}>
-            Gestión de tópicos y destinos, reglas de encaminamiento y trazabilidad de eventos asíncronos.
+            Vista del sistema Kafka anterior durante la transición; no representa el estado de Kinesis.
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -301,6 +301,12 @@ export default function MessagingAdmin() {
             <RefreshCw size={15} /> Refrescar
           </button>
         </div>
+      </div>
+
+      <div role="note" style={{ ...cardStyle, background: "#fffbeb", color: "#78350f", fontSize: 13 }}>
+        Los tópicos, particiones, trazas y reglas de esta pantalla corresponden a Kafka o al sistema anterior.
+        Las reglas aquí registradas no configuran Kinesis. No se muestran estados de streams, shards ni consumo Kinesis
+        porque esta pantalla no los consulta. El retiro de Kafka requiere un corte coordinado.
       </div>
 
       {feedback && (
