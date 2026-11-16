@@ -41,6 +41,7 @@ import { apiRequest } from "@/lib/api";
 import ConsultasB2BAdmin from "./components/ConsultasB2BAdmin";
 import EnvironmentSwitcher from "./components/EnvironmentSwitcher";
 import ObservabilidadAdmin from "./components/ObservabilidadAdmin";
+import KinesisAdmin from "./components/KinesisAdmin";
 import "./admin.css";
 
 type ApiEndpoint = {
@@ -223,7 +224,7 @@ const quickRequestEndpoints = [
 
 export default function AdminPage() {
   const [session, setSession] = useState<AuthSession | null>(null);
-  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "consultas" | "observabilidad">("inventory");
+  const [activeTab, setActiveTab] = useState<"inventory" | "sales" | "purchases" | "apis" | "console" | "consultas" | "observabilidad" | "kinesis">("inventory");
 
   const [loadErrors, setLoadErrors] = useState<Record<string, boolean>>({});
 
@@ -912,6 +913,7 @@ export default function AdminPage() {
               { id: "purchases", label: "Compras", icon: Truck },
               { id: "consultas", label: "Consultas B2B", icon: Mail },
               { id: "observabilidad", label: "Analíticas y auditoría", icon: Layers },
+              { id: "kinesis", label: "Streams Kinesis", icon: Database },
               { id: "apis", label: "Monitor de APIs", icon: Activity },
               { id: "console", label: "Consola", icon: Terminal },
             ] as const).map(({ id, label, icon: Icon }) => <button key={id} type="button" className={`admin-nav-item ${activeTab === id ? "is-active" : ""}`} aria-current={activeTab === id ? "page" : undefined} onClick={() => { setActiveTab(id); setSearchQuery(""); setStatusFilter("ALL"); }}><Icon size={18} /><span>{label}</span></button>)}
@@ -1121,6 +1123,7 @@ export default function AdminPage() {
         )}
 
         {activeTab === "observabilidad" && <ObservabilidadAdmin />}
+        {activeTab === "kinesis" && <KinesisAdmin />}
 
         {/* TAB: CONSULTAS Y COTIZACIONES B2B */}
         {activeTab === "consultas" && <ConsultasB2BAdmin />}
