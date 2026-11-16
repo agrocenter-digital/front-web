@@ -1,14 +1,30 @@
+export type Fecha = string | number | number[];
 export type Resumen = {
-  desde: string; hastaExclusivo: string; zona: string; ventas: number; monto: number;
+  desde: Fecha; hastaExclusivo: Fecha; zona: string; ventas: number; monto: number;
   consultasCreadas: number; cambiosEstado: number; alertasEmitidas: number;
 };
 export type Evento = {
-  eventId: string; occurredAt: string; eventType: string; producer: string;
+  eventId: string; occurredAt: Fecha; eventType: string; producer: string;
   aggregateType: string; aggregateId: string; correlationId: string | null;
 };
-export type Incidente = { id: string; stream: string; shard: string; sequenceNumber: string; tipoError: string; createdAt: string };
+export type Incidente = { id: string; stream: string; shard: string; sequenceNumber: string; tipoError: string; createdAt: Fecha };
 export type Pagina<T> = { elementos: T[]; pagina: number; tamano: number; hayMas: boolean };
 export type EstadoConsumidor = { estado: "DESACTIVADO" | "DESCONOCIDO" | "LECTURAS_RECIENTES" | "NO_SALUDABLE" };
+
+export function formatearFecha(valor: Fecha | null | undefined, soloDia = false): string {
+  if (Array.isArray(valor)) {
+    if (valor.length !== 3 || !valor.every(Number.isInteger)) return "Fecha no disponible";
+    const [ano, mes, dia] = valor;
+    const fecha = new Date(Date.UTC(ano, mes - 1, dia));
+    if (fecha.getUTCFullYear() !== ano || fecha.getUTCMonth() !== mes - 1 || fecha.getUTCDate() !== dia) return "Fecha no disponible";
+    return fecha.toISOString().slice(0, 10);
+  }
+  if (typeof valor !== "string" && typeof valor !== "number") return "Fecha no disponible";
+  const fecha = new Date(typeof valor === "number" ? valor * 1000 : valor);
+  if (Number.isNaN(fecha.getTime())) return "Fecha no disponible";
+  const iso = fecha.toISOString();
+  return soloDia ? iso.slice(0, 10) : `${iso.slice(0, 10)} ${iso.slice(11, 19)} UTC`;
+}
 
 export async function consultarObservabilidad(request: <T>(url: string) => Promise<T>) {
   const resultados = await Promise.allSettled([

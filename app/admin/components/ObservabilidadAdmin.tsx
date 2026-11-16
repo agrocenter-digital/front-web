@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/lib/api";
-import { consultarObservabilidad, type Resumen, type Evento, type Incidente, type Pagina, type EstadoConsumidor } from "@/lib/observabilidad";
+import { consultarObservabilidad, formatearFecha, type Resumen, type Evento, type Incidente, type Pagina, type EstadoConsumidor } from "@/lib/observabilidad";
 
 const caja: React.CSSProperties = { background: "var(--surface)", border: "1px solid var(--line-soft)", borderRadius: 12, padding: 18 };
 const boton: React.CSSProperties = { padding: "8px 12px", borderRadius: 6, border: "1px solid var(--line)", background: "var(--surface)", cursor: "pointer" };
@@ -50,7 +50,7 @@ export default function ObservabilidadAdmin() {
     <div style={caja}>
       <h3>Resumen de eventos</h3>
       {resumen ? <>
-        <p>Desde {resumen.desde} hasta antes de {resumen.hastaExclusivo} ({resumen.zona})</p>
+        <p>Desde {formatearFecha(resumen.desde, true)} hasta antes de {formatearFecha(resumen.hastaExclusivo, true)} ({resumen.zona})</p>
         <ul><li>Ventas confirmadas: {resumen.ventas}</li><li>Monto vendido: {resumen.monto}</li>
           <li>Consultas B2B creadas: {resumen.consultasCreadas}</li><li>Cambios de estado B2B: {resumen.cambiosEstado}</li>
           <li>Alertas de stock emitidas: {resumen.alertasEmitidas}</li></ul>
@@ -59,7 +59,7 @@ export default function ObservabilidadAdmin() {
     <div style={caja}>
       <h3>Eventos de auditoría recientes</h3>
       {eventos ? eventos.elementos.length ? <><ul>{eventos.elementos.map(evento => <li key={evento.eventId}>
-        {evento.occurredAt} — {evento.eventType} — {evento.producer} — {evento.aggregateType} {evento.aggregateId}
+        {formatearFecha(evento.occurredAt)} — {evento.eventType} — {evento.producer} — {evento.aggregateType} {evento.aggregateId}
         {evento.correlationId ? ` — correlación: ${evento.correlationId}` : ""}
       </li>)}</ul>{eventos.hayMas && <p>Se muestran los primeros 10 eventos.</p>}</> : <p>No hay eventos en la página consultada.</p>
         : <p>{cargando ? "Consultando…" : "Auditoría no disponible."}</p>}
@@ -69,7 +69,7 @@ export default function ObservabilidadAdmin() {
       {(servicio === "inventario" || servicio === "compras") && <p>Se muestran incidentes pendientes; un checkpoint avanzado no implica que el efecto de negocio se haya aplicado.</p>}
       {incidentes[servicio] ? incidentes[servicio]!.elementos.length ? <>
         <ul>{incidentes[servicio]!.elementos.map(incidente => <li key={incidente.id}>
-          {incidente.createdAt} — {incidente.tipoError} — {incidente.stream} / {incidente.shard} / {incidente.sequenceNumber}
+          {formatearFecha(incidente.createdAt)} — {incidente.tipoError} — {incidente.stream} / {incidente.shard} / {incidente.sequenceNumber}
         </li>)}</ul>{incidentes[servicio]!.hayMas && <p>Se muestran los primeros 10 incidentes.</p>}
         <p>Solo metadatos; la resolución requiere el procedimiento administrativo correspondiente.</p>
       </> : <p>No hay incidentes en la página consultada.</p> : <p>{cargando ? "Consultando…" : "Cuarentena no disponible."}</p>}

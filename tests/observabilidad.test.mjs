@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { consultarObservabilidad } from "../lib/observabilidad.ts";
+import { consultarObservabilidad, formatearFecha } from "../lib/observabilidad.ts";
+
+test("formatea fechas de Jackson y de ISO en UTC sin concatenar arreglos", () => {
+  assert.equal(formatearFecha([2026, 10, 18], true), "2026-10-18");
+  assert.equal(formatearFecha(1794789539.783051), "2026-11-16 00:38:59 UTC");
+  assert.equal(formatearFecha("2026-11-16T00:38:59Z"), "2026-11-16 00:38:59 UTC");
+  assert.equal(formatearFecha([2026, 2, 30]), "Fecha no disponible");
+  assert.equal(formatearFecha(null), "Fecha no disponible");
+});
 
 test("consulta las ocho rutas y conserva páginas vacías exitosas", async () => {
   const rutas = [];
